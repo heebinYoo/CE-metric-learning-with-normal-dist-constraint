@@ -163,7 +163,7 @@ def test(net, recall_ids):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train Model')
     parser.add_argument('--data_path', default='D:\MetricLearning\data', type=str, help='datasets path')
-    parser.add_argument('--data_name', default='CUB_200_2011', type=str, choices=['cars196', 'CUB_200_2011', 'Stanford_Online_Products', 'isc'],
+    parser.add_argument('--data_name', default='CUB_200_2011', type=str, choices=['cars196', 'CUB_200_2011', 'sop', 'isc'],
                         help='dataset name')
     parser.add_argument('--crop_type', default='cropped', type=str, choices=['uncropped', 'cropped'],
                         help='crop data or not, it only works for car or cub dataset')
