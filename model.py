@@ -24,7 +24,6 @@ class ProxyLinear(nn.Module):
     def extra_repr(self):
         return 'in_features={}, out_features={}'.format(self.in_features, self.out_features)
 
-
 class Model(nn.Module):
     def __init__(self, feature_dim, num_classes):
         super().__init__()

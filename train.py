@@ -52,7 +52,7 @@ def LargestEig(x, center=True, scale=True):
     return eigenvectors[:,1] ,scaled_covariance
 
 
-def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold):
+def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold, eig_para):
     net.train()
     total_loss, total_correct, total_num, data_bar = 0.0, 0.0, 0, tqdm(train_data_loader, dynamic_ncols=True)
     for inputs, labels in data_bar:
@@ -82,7 +82,10 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold)
             #샘플의 방향으로 아이겐벡터방향 정해줘야함
             if torch.dot(emp_center,eig_vecs[i]) <0 :
                 eig_vecs[i]=eig_vecs[i]*-1
-            new_sample_centroid = emp_center + (eig_vecs[i] * torch.norm(emp_center) * 2)
+            with torch.no_grad():
+                aug_weight = (1-eig_para)* net.fc.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
+
+            new_sample_centroid = emp_center + (aug_weight * torch.norm(emp_center) * 2)
 
             #샘플의 크기가 emprical mean을 mean으로 갖는 1d gaussian이라고 가정해서 기준이되는 sigma 값에 따라 low confidence sample을 뽑음
             #sigma=0.2
@@ -160,24 +163,25 @@ def test(net, recall_ids):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train Model')
     parser.add_argument('--data_path', default='D:\MetricLearning\data', type=str, help='datasets path')
-    parser.add_argument('--data_name', default='Stanford_Online_Products', type=str, choices=['cars196', 'CUB_200_2011', 'Stanford_Online_Products', 'isc'],
+    parser.add_argument('--data_name', default='CUB_200_2011', type=str, choices=['cars196', 'CUB_200_2011', 'Stanford_Online_Products', 'isc'],
                         help='dataset name')
-    parser.add_argument('--crop_type', default='uncropped', type=str, choices=['uncropped', 'cropped'],
+    parser.add_argument('--crop_type', default='cropped', type=str, choices=['uncropped', 'cropped'],
                         help='crop data or not, it only works for car or cub dataset')
     parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
     parser.add_argument('--feature_dim', default=2048, type=int, help='feature dim')
     parser.add_argument('--temperature', default=0.05, type=float, help='temperature used in softmax')
-    parser.add_argument('--recalls', default='1,10,100,1000', type=str, help='selected recall')
-    parser.add_argument('--batch_size', default=40, type=int, help='train batch size')
-    parser.add_argument('--num_sample', default=5, type=int, help='samples within each class')
+    parser.add_argument('--recalls', default='1,2,4,8', type=str, help='selected recall')
+    parser.add_argument('--batch_size', default=75, type=int, help='train batch size')
+    parser.add_argument('--num_sample', default=25, type=int, help='samples within each class')
     parser.add_argument('--num_epochs', default=30, type=int, help='train epoch number')
     parser.add_argument('--threshold', default=0.0, type=float, help='threshold for low confidence samples')
+    parser.add_argument('--eigvec_para', default=0.2, type=float, help='ratio of former weight : eigenvector')
 
     opt = parser.parse_args()
     # args parse
     data_path, data_name, crop_type, lr = opt.data_path, opt.data_name, opt.crop_type, opt.lr
     feature_dim, temperature, batch_size, num_epochs,  = opt.feature_dim, opt.temperature, opt.batch_size, opt.num_epochs
-    num_sample, threshold, recalls = opt.num_sample, opt.threshold, [int(k) for k in opt.recalls.split(',')]
+    num_sample, threshold, eig_para, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, [int(k) for k in opt.recalls.split(',')]
     save_name_pre = '{}_{}_{}'.format(data_name, crop_type, feature_dim)
 
     results = {'train_loss': [], 'train_accuracy': []}
@@ -211,9 +215,9 @@ if __name__ == '__main__':
     best_recall = 0.0
     for epoch in range(1, num_epochs + 2):
         if epoch == 1:
-            train_loss, train_accuracy = train(model, optimizer_init,feature_dim,batch_size,num_sample,len(train_data_set.class_to_idx), threshold)
+            train_loss, train_accuracy = train(model, optimizer_init,feature_dim,batch_size,num_sample,len(train_data_set.class_to_idx), threshold,eig_para)
         else:
-            train_loss, train_accuracy = train(model, optimizer,feature_dim,batch_size,num_sample,len(train_data_set.class_to_idx), threshold)
+            train_loss, train_accuracy = train(model, optimizer,feature_dim,batch_size,num_sample,len(train_data_set.class_to_idx), threshold, eig_para)
         results['train_loss'].append(train_loss)
         results['train_accuracy'].append(train_accuracy)
         rank = test(model, recalls)
