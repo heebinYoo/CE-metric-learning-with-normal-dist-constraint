@@ -185,7 +185,7 @@ if __name__ == '__main__':
     num_sample, threshold, eig_para, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, [int(k) for k in opt.recalls.split(',')]
     save_name_pre = '{}_{}_{}'.format(data_name, crop_type, feature_dim)
 
-    device = torch.device("cuda:"+gpu_id if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:"+str(gpu_id) if torch.cuda.is_available() else "cpu")
     results = {'train_loss': [], 'train_accuracy': []}
     for recall_id in recalls:
         results['test_dense_recall@{}'.format(recall_id)] = []
