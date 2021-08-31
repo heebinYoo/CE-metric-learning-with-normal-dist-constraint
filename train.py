@@ -169,7 +169,9 @@ if __name__ == '__main__':
     num_sample, threshold, eig_para, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, [int(k) for k in opt.recalls.split(',')]
     save_name_pre = '{}_{}_{}'.format(data_name, crop_type, feature_dim)
 
-    device = torch.device("cuda:"+gpu_id if torch.cuda.is_available() else "cpu")
+    gpu_id_list = gpu_id.split(',')
+    gpu_id_list = list(map(int, gpu_id_list))
+    device = torch.device("cuda:"+gpu_id_list[0] if torch.cuda.is_available() else "cpu")
     results = {'train_loss': [], 'train_accuracy': []}
     for recall_id in recalls:
         results['test_dense_recall@{}'.format(recall_id)] = []
@@ -187,11 +189,10 @@ if __name__ == '__main__':
         gallery_data_loader = DataLoader(gallery_data_set, batch_size, shuffle=False, num_workers=8)
         eval_dict['gallery'] = {'data_loader': gallery_data_loader}
 
-    gpu_id_list = gpu_id.split(',')
-    gpu_id_list = list(map(int, gpu_id_list))
+
     # model setup, model profile, optimizer config and loss definition
     model = ConfidenceControl(feature_dim, 2*len(train_data_set.class_to_idx))
-    if (device.type == 'cuda') and (torch.cuda.device_count()>1):
+    if (device.type == 'cuda') and (len(gpu_id_list)>1):
         print("multi GPU activate")
         model = nn.DataParallel(model, device_ids=gpu_id_list)
     model.to(device)
