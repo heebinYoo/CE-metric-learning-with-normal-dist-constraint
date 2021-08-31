@@ -51,15 +51,15 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
 
         eig_vecs = torch.zeros((num_class, feature_dim)).to(device)
         low_confidence_sample = torch.zeros((batch_size))
-        new_samples_target=torch.zeros((batch_size),dtype=int).to(device)
+        new_samples_target = torch.zeros((batch_size), dtype=int).to(device)
         # 새로운 샘플의 임베딩위치 :
-        accumulated_num_sample=0
+        accumulated_num_sample = 0
         for i in range(len(labels_set)):
 
             num_sample = torch.sum(label_to_indices == i)
-            #if i == 0:
+            # if i == 0:
             #    new_samples_target[:] = torch.full((num_sample, 1), labels_set[0] + num_class, dtype=int)
-            chosen_features_indices=label_to_indices == i
+            chosen_features_indices = label_to_indices == i
             chosen_features = features[0:batch_size][chosen_features_indices]
             emp_center = chosen_features.mean(0)
             if num_sample > 1:
@@ -73,7 +73,7 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
             with torch.no_grad():
                 aug_weight = (1 - eig_para) * net.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
 
-            #TBD
+            # TBD
             new_sample_centroid = emp_center + (aug_weight * torch.norm(emp_center) * 2)
 
             # 샘플의 크기가 emprical mean을 mean으로 갖는 1d gaussian이라고 가정해서 기준이되는 sigma 값에 따라 low confidence sample을 뽑음
@@ -88,14 +88,14 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
             new_samples_emb = new_sample_distribution.sample([num_sample])
             features = torch.cat((features, new_samples_emb.float()), 0)
 
-            new_samples_target[accumulated_num_sample:accumulated_num_sample+num_sample] = labels_set[i] + num_class
+            new_samples_target[accumulated_num_sample:accumulated_num_sample + num_sample] = labels_set[i] + num_class
             accumulated_num_sample += num_sample
 
         loss_aug = net(features[batch_size:], labels=new_samples_target, sample_type='aug')
         # loss_aug = loss_criterion(aug_classes,new_samples_target.to(device) )
         loss_high = 0
         loss_low = 0
-        high_confidence_ind=torch.where(low_confidence_sample == 0)[0]
+        high_confidence_ind = torch.where(low_confidence_sample == 0)[0]
         low_confidence_ind = torch.where(low_confidence_sample == 1)[0]
         if high_confidence_ind.size()[0] != 0:
             loss_high = net(features[high_confidence_ind],
@@ -178,7 +178,6 @@ if __name__ == '__main__':
                                                                                                 opt.recalls.split(',')]
     save_name_pre = '{}_{}_{}'.format(data_name, crop_type, feature_dim)
 
-
     results = {'train_loss': [], 'train_accuracy': []}
     for recall_id in recalls:
         results['test_dense_recall@{}'.format(recall_id)] = []
@@ -187,15 +186,16 @@ if __name__ == '__main__':
     # dataset loader
     train_data_set = ImageReader(data_path, data_name, 'train', crop_type)
     train_sample = MPerClassSampler(train_data_set.labels, batch_size, num_sample)
-    train_data_loader = DataLoader(train_data_set, batch_sampler=train_sample, num_workers=4*torch.cuda.device_count())
+    train_data_loader = DataLoader(train_data_set, batch_sampler=train_sample,
+                                   num_workers=4 * torch.cuda.device_count())
     test_data_set = ImageReader(data_path, data_name, 'query' if data_name == 'isc' else 'test', crop_type)
-    test_data_loader = DataLoader(test_data_set, batch_size, shuffle=False, num_workers=4*torch.cuda.device_count())
+    test_data_loader = DataLoader(test_data_set, batch_size, shuffle=False, num_workers=4 * torch.cuda.device_count())
     eval_dict = {'test': {'data_loader': test_data_loader}}
     if data_name == 'isc':
         gallery_data_set = ImageReader(data_path, data_name, 'gallery', crop_type)
-        gallery_data_loader = DataLoader(gallery_data_set, batch_size, shuffle=False, num_workers=4*torch.cuda.device_count())
+        gallery_data_loader = DataLoader(gallery_data_set, batch_size, shuffle=False,
+                                         num_workers=4 * torch.cuda.device_count())
         eval_dict['gallery'] = {'data_loader': gallery_data_loader}
-
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print('Device:', device)
@@ -203,7 +203,6 @@ if __name__ == '__main__':
     print('Count of using GPUs:', torch.cuda.device_count())
 
     # model setup, model profile, optimizer config and loss definition
-
 
     if (device.type == 'cuda') and torch.cuda.device_count() > 1:
         print("multi GPU activate")
@@ -217,7 +216,7 @@ if __name__ == '__main__':
         print("cpu mode")
         model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
 
-
+    print(torch.randn(1, 3, 224, 224).to(device))
     flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device), True, None))
     flops, params = clever_format([flops, params])
     print('# Model Params: {} FLOPs: {}'.format(params, flops))
