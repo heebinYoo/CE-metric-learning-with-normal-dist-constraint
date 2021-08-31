@@ -4,6 +4,21 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torchvision.models import resnet50
+from losses import AngularPenaltySMLoss, ConfidenceControlLoss
+
+
+class ConvAngularPen(nn.Module):
+    def __init__(self, num_classes=10, loss_type='arcface'):
+        super(ConvAngularPen, self).__init__()
+        self.convlayers = ConvNet()
+        self.adms_loss = AngularPenaltySMLoss(3, num_classes, loss_type=loss_type)
+
+    def forward(self, x, labels=None, embed=False):
+        x = self.convlayers(x)
+        if embed:
+            return x
+        L = self.adms_loss(x, labels)
+        return L
 
 
 class ProxyLinear(nn.Module):
@@ -24,8 +39,26 @@ class ProxyLinear(nn.Module):
     def extra_repr(self):
         return 'in_features={}, out_features={}'.format(self.in_features, self.out_features)
 
-class Model(nn.Module):
-    def __init__(self, feature_dim, num_classes):
+
+class ConfidenceControl(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ConfidenceControl, self).__init__()
+        self.convlayers = ConvNet(in_features)
+        self.cc_loss = ConfidenceControlLoss(in_features, out_features)
+
+    def forward(self, x, embed=False, labels=None, sample_type=None ):
+
+
+        if embed:
+            x = self.convlayers(x)
+            return x
+        L = self.cc_loss(x, labels, sample_type)
+        return L
+
+
+
+class ConvNet(nn.Module):
+    def __init__(self, feature_dim):
         super().__init__()
 
         self.feature = []
@@ -38,12 +71,9 @@ class Model(nn.Module):
         # Refactor Layer
         self.refactor = nn.Linear(2048, feature_dim)
         # Classification Layer
-        self.fc = ProxyLinear(feature_dim, num_classes)
+        #self.fc = ProxyLinear(feature_dim, num_classes)
 
-    def forward(self, x, aug):
-        if aug ==True :
-            classes,classes_high = self.fc(x)
-            return x, classes, classes_high
+    def forward(self, x):
             # x is feature
         feature = self.feature(x)
         global_feature = torch.flatten(feature, start_dim=1)
@@ -51,6 +81,8 @@ class Model(nn.Module):
         #feature = F.normalize(self.refactor(global_feature), dim=-1)
 
         feature = self.refactor(global_feature)
-        classes,classes_high = self.fc(feature)
-        return feature, classes, classes_high
+        #classes,classes_high = self.fc(feature)
+
+        return feature
+        #return feature, classes, classes_high
 

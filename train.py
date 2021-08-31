@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import torch.nn.functional as F
-from model import Model
+from model import ConfidenceControl, ConvAngularPen
 from utils import recall, ImageReader, MPerClassSampler
 from torch.distributions import normal
 from losses import ProxyNCA_prob
@@ -57,7 +57,7 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
     total_loss, total_correct, total_num, data_bar = 0.0, 0.0, 0, tqdm(train_data_loader, dynamic_ncols=True)
     for inputs, labels in data_bar:
         inputs, labels = inputs.to(device) , labels.to(device)
-        features, classes, classes_high = net(inputs, False)
+        features= net(inputs, embed=True)
         """
         여기에 제안하는 방법이 추가되는 부분.
         """
@@ -83,7 +83,8 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
             if torch.dot(emp_center,eig_vecs[i]) <0 :
                 eig_vecs[i]=eig_vecs[i]*-1
             with torch.no_grad():
-                aug_weight = (1-eig_para)* net.fc.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
+
+                aug_weight = (1-eig_para)* net.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
 
             new_sample_centroid = emp_center + (aug_weight * torch.norm(emp_center) * 2)
 
@@ -100,14 +101,14 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
             if i != 0:
                 new_samples_target = torch.cat((new_samples_target.flatten(),torch.full((num_sample,1),labels_set[i]+num_class,dtype=int).flatten()),0)
 
-        aug_features, aug_classes, aug_classes_high = net(features[batch_size:], True)
-        loss_aug = loss_criterion(aug_classes,new_samples_target.to(device) )
+        loss_aug = net(features[batch_size:],labels=new_samples_target.to(device), sample_type='aug')
+        #loss_aug = loss_criterion(aug_classes,new_samples_target.to(device) )
         loss_high =0
         loss_low = 0
         if len(torch.where(low_confidence_sample == 0)[0]) != 0:
-            loss_high = loss_criterion(classes_high[torch.where(low_confidence_sample == 0)[0]], labels[torch.where(low_confidence_sample == 0)[0]].to(device) )
+            loss_high = net(features[torch.where(low_confidence_sample == 0)[0]], labels=labels[torch.where(low_confidence_sample == 0)[0]].to(device),sample_type='high' )
         if len(torch.where(low_confidence_sample == 1)[0]) != 0:
-            loss_low = loss_criterion(classes[torch.where(low_confidence_sample == 1)[0]], labels[torch.where(low_confidence_sample == 1)[0]].to(device) )
+            loss_low = net(features[torch.where(low_confidence_sample == 1)[0]], labels=labels[torch.where(low_confidence_sample == 1)[0]].to(device),sample_type='low' )
         loss =  loss_high +  loss_low + 0.1 * loss_aug
 
 
@@ -116,15 +117,14 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
         optim.zero_grad()
         loss.backward()
         optim.step()
-        pred = torch.argmax(classes, dim=-1)
+        #pred = torch.argmax(classes, dim=-1)
         total_loss += loss.item() * inputs.size(0)
-        total_correct += torch.sum(pred == labels).item()
+        #total_correct += torch.sum(pred == labels).item()
         total_num += inputs.size(0)
-        data_bar.set_description('Train Epoch {}/{} - Loss:{:.4f} - Acc:{:.2f}%'
-                                 .format(epoch, num_epochs + 1, total_loss / total_num,
-                                         total_correct / total_num * 100))
+        data_bar.set_description('Train Epoch {}/{} - Loss:{:.4f} '
+                                 .format(epoch, num_epochs + 1, total_loss / total_num))
 
-    return total_loss / total_num, total_correct / total_num * 100
+    return total_loss / total_num
 
 
 def test(net, recall_ids):
@@ -135,7 +135,7 @@ def test(net, recall_ids):
             eval_dict[key]['features'] = []
             for inputs, labels in tqdm(eval_dict[key]['data_loader'], desc='processing {} data'.format(key),
                                        dynamic_ncols=True):
-                features, classes, classes_high = net(inputs.to(device) , False)
+                features = net(inputs.to(device) , embed=True)
                 features = F.normalize(features, dim=-1)
                 eval_dict[key]['features'].append(features)
             eval_dict[key]['features'] = torch.cat(eval_dict[key]['features'], dim=0)
@@ -204,11 +204,11 @@ if __name__ == '__main__':
         eval_dict['gallery'] = {'data_loader': gallery_data_loader}
 
     # model setup, model profile, optimizer config and loss definition
-    model = Model(feature_dim, 2*len(train_data_set.class_to_idx)).to(device) # modify
-    flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device) ,False,))
+    model = ConfidenceControl(feature_dim, 2*len(train_data_set.class_to_idx)).to(device) # modify
+    flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device), True,None))
     flops, params = clever_format([flops, params])
     print('# Model Params: {} FLOPs: {}'.format(params, flops))
-    optimizer_init = SGD([{'params': model.refactor.parameters()}, {'params': model.fc.parameters()}],
+    optimizer_init = SGD([{'params': model.convlayers.refactor.parameters()}, {'params': model.cc_loss.weight}],
                          lr=lr, momentum=0.9, weight_decay=1e-4)
     optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
     lr_scheduler = StepLR(optimizer, step_size=num_epochs // 2, gamma=0.1)
@@ -217,11 +217,11 @@ if __name__ == '__main__':
     best_recall = 0.0
     for epoch in range(1, num_epochs + 2):
         if epoch == 1:
-            train_loss, train_accuracy = train(model, optimizer_init,feature_dim,batch_size,num_sample,len(train_data_set.class_to_idx), threshold,eig_para)
+            train_loss = train(model, optimizer_init,feature_dim,batch_size,num_sample,len(train_data_set.class_to_idx), threshold,eig_para)
         else:
-            train_loss, train_accuracy = train(model, optimizer,feature_dim,batch_size,num_sample,len(train_data_set.class_to_idx), threshold, eig_para)
+            train_loss = train(model, optimizer,feature_dim,batch_size,num_sample,len(train_data_set.class_to_idx), threshold, eig_para)
         results['train_loss'].append(train_loss)
-        results['train_accuracy'].append(train_accuracy)
+        results['train_accuracy'].append(0)
         rank = test(model, recalls)
         if epoch >= 2:
             lr_scheduler.step()
