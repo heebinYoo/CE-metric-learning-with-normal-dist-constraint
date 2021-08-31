@@ -59,8 +59,8 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
             num_sample = torch.sum(label_to_indices == i)
             #if i == 0:
             #    new_samples_target[:] = torch.full((num_sample, 1), labels_set[0] + num_class, dtype=int)
-            chosen_features_indices=label_to_indices == labels_set[i]
-            chosen_features = features[chosen_features_indices]
+            chosen_features_indices=label_to_indices == i
+            chosen_features = features[0:batch_size][chosen_features_indices]
             emp_center = chosen_features.mean(0)
             if num_sample > 1:
                 eig_vecs[i], scaled_covariance = LargestEig(chosen_features)
