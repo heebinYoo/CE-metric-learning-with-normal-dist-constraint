@@ -197,7 +197,7 @@ if __name__ == '__main__':
                                          num_workers=4 * torch.cuda.device_count())
         eval_dict['gallery'] = {'data_loader': gallery_data_loader}
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print('Device:', device)
     print('Current cuda device:', torch.cuda.current_device())
     print('Count of using GPUs:', torch.cuda.device_count())
@@ -206,10 +206,8 @@ if __name__ == '__main__':
 
     if (device.type == 'cuda') and torch.cuda.device_count() > 1:
         print("multi GPU activate")
-        torch.cuda.set_device('cuda:0')
-        model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx)).cuda()
+        model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = nn.DataParallel(model).to(device)
-        print(model.get_device())
     elif (device.type == 'cuda') and torch.cuda.device_count() == 1:
         print("single GPU activate")
         model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
