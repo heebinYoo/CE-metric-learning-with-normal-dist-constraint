@@ -190,13 +190,13 @@ if __name__ == '__main__':
     # dataset loader
     train_data_set = ImageReader(data_path, data_name, 'train', crop_type)
     train_sample = MPerClassSampler(train_data_set.labels, batch_size, num_sample)
-    train_data_loader = DataLoader(train_data_set, batch_sampler=train_sample, num_workers=8)
+    train_data_loader = DataLoader(train_data_set, batch_sampler=train_sample, num_workers=4*len(gpu_id_list))
     test_data_set = ImageReader(data_path, data_name, 'query' if data_name == 'isc' else 'test', crop_type)
-    test_data_loader = DataLoader(test_data_set, batch_size, shuffle=False, num_workers=8)
+    test_data_loader = DataLoader(test_data_set, batch_size, shuffle=False, num_workers=4*len(gpu_id_list))
     eval_dict = {'test': {'data_loader': test_data_loader}}
     if data_name == 'isc':
         gallery_data_set = ImageReader(data_path, data_name, 'gallery', crop_type)
-        gallery_data_loader = DataLoader(gallery_data_set, batch_size, shuffle=False, num_workers=8)
+        gallery_data_loader = DataLoader(gallery_data_set, batch_size, shuffle=False, num_workers=4*len(gpu_id_list))
         eval_dict['gallery'] = {'data_loader': gallery_data_loader}
 
     # model setup, model profile, optimizer config and loss definition
