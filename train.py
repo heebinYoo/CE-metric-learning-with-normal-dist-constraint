@@ -206,6 +206,7 @@ if __name__ == '__main__':
 
     if (device.type == 'cuda') and torch.cuda.device_count() > 1:
         print("multi GPU activate")
+        torch.cuda.set_device('cuda:0')
         model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx)).cuda()
         model = nn.DataParallel(model).to(device)
     elif (device.type == 'cuda') and torch.cuda.device_count() == 1:
@@ -216,7 +217,6 @@ if __name__ == '__main__':
         print("cpu mode")
         model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
 
-    print(torch.randn(1, 3, 224, 224).to(device))
     flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device), True, None))
     flops, params = clever_format([flops, params])
     print('# Model Params: {} FLOPs: {}'.format(params, flops))
