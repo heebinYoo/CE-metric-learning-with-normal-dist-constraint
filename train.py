@@ -42,12 +42,10 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
     for inputs, labels in data_bar:
         inputs, labels = inputs.to(device) , labels.to(device)
         features= net(inputs, embed=True)
-        """
-        여기에 제안하는 방법이 추가되는 부분.
-        """
+
         #get first eigenvector
-        labels_set = list(set(labels.cpu().numpy()))
-        label_to_indices = {label: np.where(labels.cpu().numpy() == label)[0] for label in labels_set}
+        labels_set, label_to_indices = torch.unique(labels, return_inverse=True)
+        #label_to_indices = {label: np.where(labels.cpu().numpy() == label)[0] for label in labels_set}
 
         eig_vecs=torch.zeros((num_class,feature_dim)).to(device)
         low_confidence_sample =  torch.zeros((batch_size))
