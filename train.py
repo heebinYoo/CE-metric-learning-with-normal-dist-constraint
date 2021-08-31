@@ -169,7 +169,6 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs', default=30, type=int, help='train epoch number')
     parser.add_argument('--threshold', default=0.0, type=float, help='threshold for low confidence samples')
     parser.add_argument('--eigvec_para', default=0.2, type=float, help='ratio of former weight : eigenvector')
-    parser.add_argument('--gpu_id', default='0', type=str, help='gpu id')
 
     opt = parser.parse_args()
     # args parse
@@ -179,9 +178,7 @@ if __name__ == '__main__':
                                                                                                 opt.recalls.split(',')]
     save_name_pre = '{}_{}_{}'.format(data_name, crop_type, feature_dim)
 
-    gpu_id_list = gpu_id.split(',')
-    gpu_id_list = list(map(int, gpu_id_list))
-    device = torch.device("cuda:" + str(gpu_id_list[0]) if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     results = {'train_loss': [], 'train_accuracy': []}
     for recall_id in recalls:
         results['test_dense_recall@{}'.format(recall_id)] = []
@@ -201,9 +198,9 @@ if __name__ == '__main__':
 
     # model setup, model profile, optimizer config and loss definition
     model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
-    if (device.type == 'cuda') and (len(gpu_id_list) > 1):
+    if (device.type == 'cuda') and torch.cuda.device_count() >1 :
         print("multi GPU activate")
-        model = nn.DataParallel(model, device_ids=device)
+        model = nn.DataParallel(model)
     model.to(device)
     flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device), True, None))
     flops, params = clever_format([flops, params])
