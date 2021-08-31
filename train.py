@@ -15,6 +15,7 @@ from model import ConfidenceControl, ConvAngularPen
 from utils import recall, ImageReader, MPerClassSampler
 from torch.distributions import normal
 from losses import ProxyNCA_prob
+
 # for reproducibility
 torch.manual_seed(0)
 np.random.seed(0)
@@ -26,82 +27,91 @@ def LargestEig(x, center=True, scale=True):
     with torch.no_grad():
         n, p = x.size()
         ones = torch.ones(n, dtype=torch.float).view([n, 1]).to(device)
-        h = ((1 / n) * torch.mm(ones, ones.t())) if center else torch.zeros(n * n, dtype=torch.float).view([n, n]).to(device)
+        h = ((1 / n) * torch.mm(ones, ones.t())) if center else torch.zeros(n * n, dtype=torch.float).view([n, n]).to(
+            device)
         H = torch.eye(n, dtype=torch.float).to(device) - h
         X_center = torch.mm(H, x)
         covariance = 1 / (n - 1) * torch.mm(X_center.t(), X_center).view(p, p)
         scaling = torch.sqrt(1 / torch.diag(covariance)) if scale else torch.ones(p, dtype=torch.float).to(device)
         scaled_covariance = torch.mm(torch.diag(scaling).view(p, p), covariance)
         eigenvalues, eigenvectors = torch.linalg.eigh(scaled_covariance, 'U')
-    return eigenvectors[:,1] ,scaled_covariance
+    return eigenvectors[:, 1], scaled_covariance
 
 
 def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold, eig_para):
     net.train()
     total_loss, total_correct, total_num, data_bar = 0.0, 0.0, 0, tqdm(train_data_loader, dynamic_ncols=True)
     for inputs, labels in data_bar:
-        inputs, labels = inputs.to(device) , labels.to(device)
-        features= net(inputs, embed=True)
+        inputs, labels = inputs.to(device), labels.to(device)
+        features = net(inputs, embed=True)
 
-        #get first eigenvector
+        # get first eigenvector
         labels_set, label_to_indices = torch.unique(labels, return_inverse=True)
-        #label_to_indices = {label: np.where(labels.cpu().numpy() == label)[0] for label in labels_set}
+        # label_to_indices = {label: np.where(labels.cpu().numpy() == label)[0] for label in labels_set}
 
-        eig_vecs=torch.zeros((num_class,feature_dim)).to(device)
-        low_confidence_sample =  torch.zeros((batch_size))
+        eig_vecs = torch.zeros((num_class, feature_dim)).to(device)
+        low_confidence_sample = torch.zeros((batch_size))
+        new_samples_target=torch.zeros((batch_size),dtype=int).to(device)
         # 새로운 샘플의 임베딩위치 :
-
+        accumulated_num_sample=0
         for i in range(len(labels_set)):
-            num_sample =len(label_to_indices[labels_set[i]])
-            if i==0 :
-                new_samples_target = torch.full((num_sample,1),labels_set[0]+num_class,dtype=int)
-            emp_center = features[label_to_indices[labels_set[i]]].mean(0)
-            if num_sample >1 :
-                eig_vecs[i],scaled_covariance = LargestEig(features[label_to_indices[labels_set[i]]])
 
-            else : eig_vecs[i] = features[label_to_indices[labels_set[i]]]
+            num_sample = torch.sum(label_to_indices == i)
+            #if i == 0:
+            #    new_samples_target[:] = torch.full((num_sample, 1), labels_set[0] + num_class, dtype=int)
+            chosen_features_indices=label_to_indices == labels_set[i]
+            chosen_features = features[chosen_features_indices]
+            emp_center = chosen_features.mean(0)
+            if num_sample > 1:
+                eig_vecs[i], scaled_covariance = LargestEig(chosen_features)
+            else:
+                eig_vecs[i] = chosen_features
 
-            #샘플의 방향으로 아이겐벡터방향 정해줘야함
-            if torch.dot(emp_center,eig_vecs[i]) <0 :
-                eig_vecs[i]=eig_vecs[i]*-1
+            # 샘플의 방향으로 아이겐벡터방향 정해줘야함
+            if torch.dot(emp_center, eig_vecs[i]) < 0:
+                eig_vecs[i] = - eig_vecs[i]
             with torch.no_grad():
+                aug_weight = (1 - eig_para) * net.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
 
-                aug_weight = (1-eig_para)* net.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
-
+            #TBD
             new_sample_centroid = emp_center + (aug_weight * torch.norm(emp_center) * 2)
 
-            #샘플의 크기가 emprical mean을 mean으로 갖는 1d gaussian이라고 가정해서 기준이되는 sigma 값에 따라 low confidence sample을 뽑음
-            #sigma=0.2
-            length_std = torch.std(torch.norm(features[label_to_indices[labels_set[i]]],dim=1))
-            inds = torch.where(torch.norm(features[label_to_indices[labels_set[i]]],dim=1)<torch.norm(emp_center)+ threshold*length_std)[0].cpu().detach()
-            if len(inds) != 0:
-                low_confidence_sample[label_to_indices[labels_set[i]][inds]] = 1
+            # 샘플의 크기가 emprical mean을 mean으로 갖는 1d gaussian이라고 가정해서 기준이되는 sigma 값에 따라 low confidence sample을 뽑음
+            # sigma=0.2
+            normed_chosen_features = torch.norm(chosen_features, dim=1)
+            length_std = torch.std(normed_chosen_features)
+            inds = torch.where(normed_chosen_features < torch.norm(emp_center) + threshold * length_std)[0]
+            if inds.size()[0] != 0:
+                low_confidence_sample[chosen_features_indices[inds]] = 1
 
-            new_sample_distribution = normal.Normal(new_sample_centroid, torch.norm(emp_center)/8)
+            new_sample_distribution = normal.Normal(new_sample_centroid, torch.norm(emp_center) / 8)
             new_samples_emb = new_sample_distribution.sample([num_sample])
-            features = torch.cat((features,new_samples_emb.float()),0)
-            if i != 0:
-                new_samples_target = torch.cat((new_samples_target.flatten(),torch.full((num_sample,1),labels_set[i]+num_class,dtype=int).flatten()),0)
+            features = torch.cat((features, new_samples_emb.float()), 0)
 
-        loss_aug = net(features[batch_size:],labels=new_samples_target.to(device), sample_type='aug')
-        #loss_aug = loss_criterion(aug_classes,new_samples_target.to(device) )
-        loss_high =0
+            new_samples_target[accumulated_num_sample:accumulated_num_sample+num_sample] = labels_set[i] + num_class
+            accumulated_num_sample += num_sample
+
+        loss_aug = net(features[batch_size:], labels=new_samples_target, sample_type='aug')
+        # loss_aug = loss_criterion(aug_classes,new_samples_target.to(device) )
+        loss_high = 0
         loss_low = 0
-        if len(torch.where(low_confidence_sample == 0)[0]) != 0:
-            loss_high = net(features[torch.where(low_confidence_sample == 0)[0]], labels=labels[torch.where(low_confidence_sample == 0)[0]].to(device),sample_type='high' )
-        if len(torch.where(low_confidence_sample == 1)[0]) != 0:
-            loss_low = net(features[torch.where(low_confidence_sample == 1)[0]], labels=labels[torch.where(low_confidence_sample == 1)[0]].to(device),sample_type='low' )
-        loss =  loss_high +  loss_low + 0.1 * loss_aug
+        high_confidence_ind=torch.where(low_confidence_sample == 0)[0]
+        low_confidence_ind = torch.where(low_confidence_sample == 1)[0]
+        if high_confidence_ind.size()[0] != 0:
+            loss_high = net(features[high_confidence_ind],
+                            labels=labels[high_confidence_ind], sample_type='high')
+        if low_confidence_ind.size()[0] != 0:
+            loss_low = net(features[low_confidence_ind],
+                           labels=labels[low_confidence_ind], sample_type='low')
+        loss = loss_high + loss_low + 0.1 * loss_aug
 
-
-
-        #loss = loss_criterion(classes / temperature, labels)
+        # loss = loss_criterion(classes / temperature, labels)
         optim.zero_grad()
         loss.backward()
         optim.step()
-        #pred = torch.argmax(classes, dim=-1)
+        # pred = torch.argmax(classes, dim=-1)
         total_loss += loss.item() * inputs.size(0)
-        #total_correct += torch.sum(pred == labels).item()
+        # total_correct += torch.sum(pred == labels).item()
         total_num += inputs.size(0)
         data_bar.set_description('Train Epoch {}/{} - Loss:{:.4f} '
                                  .format(epoch, num_epochs + 1, total_loss / total_num))
@@ -117,7 +127,7 @@ def test(net, recall_ids):
             eval_dict[key]['features'] = []
             for inputs, labels in tqdm(eval_dict[key]['data_loader'], desc='processing {} data'.format(key),
                                        dynamic_ncols=True):
-                features = net(inputs.to(device) , embed=True)
+                features = net(inputs.to(device), embed=True)
                 features = F.normalize(features, dim=-1)
                 eval_dict[key]['features'].append(features)
             eval_dict[key]['features'] = torch.cat(eval_dict[key]['features'], dim=0)
@@ -145,7 +155,8 @@ def test(net, recall_ids):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train Model')
     parser.add_argument('--data_path', default='D:\MetricLearning\data', type=str, help='datasets path')
-    parser.add_argument('--data_name', default='CUB_200_2011', type=str, choices=['cars196', 'CUB_200_2011', 'sop', 'isc'],
+    parser.add_argument('--data_name', default='CUB_200_2011', type=str,
+                        choices=['cars196', 'CUB_200_2011', 'sop', 'isc'],
                         help='dataset name')
     parser.add_argument('--crop_type', default='cropped', type=str, choices=['uncropped', 'cropped'],
                         help='crop data or not, it only works for car or cub dataset')
@@ -163,13 +174,14 @@ if __name__ == '__main__':
     opt = parser.parse_args()
     # args parse
     data_path, data_name, crop_type, lr = opt.data_path, opt.data_name, opt.crop_type, opt.lr
-    feature_dim, temperature, batch_size, num_epochs,  gpu_id = opt.feature_dim, opt.temperature, opt.batch_size, opt.num_epochs, opt.gpu_id
-    num_sample, threshold, eig_para, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, [int(k) for k in opt.recalls.split(',')]
+    feature_dim, temperature, batch_size, num_epochs, gpu_id = opt.feature_dim, opt.temperature, opt.batch_size, opt.num_epochs, opt.gpu_id
+    num_sample, threshold, eig_para, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, [int(k) for k in
+                                                                                                opt.recalls.split(',')]
     save_name_pre = '{}_{}_{}'.format(data_name, crop_type, feature_dim)
 
     gpu_id_list = gpu_id.split(',')
     gpu_id_list = list(map(int, gpu_id_list))
-    device = torch.device("cuda:"+str(gpu_id_list[0]) if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:" + str(gpu_id_list[0]) if torch.cuda.is_available() else "cpu")
     results = {'train_loss': [], 'train_accuracy': []}
     for recall_id in recalls:
         results['test_dense_recall@{}'.format(recall_id)] = []
@@ -187,28 +199,29 @@ if __name__ == '__main__':
         gallery_data_loader = DataLoader(gallery_data_set, batch_size, shuffle=False, num_workers=8)
         eval_dict['gallery'] = {'data_loader': gallery_data_loader}
 
-
     # model setup, model profile, optimizer config and loss definition
-    model = ConfidenceControl(feature_dim, 2*len(train_data_set.class_to_idx))
-    if (device.type == 'cuda') and (len(gpu_id_list)>1):
+    model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
+    if (device.type == 'cuda') and (len(gpu_id_list) > 1):
         print("multi GPU activate")
         model = nn.DataParallel(model, device_ids=gpu_id_list)
     model.to(device)
-    flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device), True,None))
+    flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device), True, None))
     flops, params = clever_format([flops, params])
     print('# Model Params: {} FLOPs: {}'.format(params, flops))
     optimizer_init = SGD([{'params': model.convlayers.refactor.parameters()}, {'params': model.cc_loss.weight}],
                          lr=lr, momentum=0.9, weight_decay=1e-4)
     optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
     lr_scheduler = StepLR(optimizer, step_size=num_epochs // 2, gamma=0.1)
-    #loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
+    # loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
     loss_criterion = nn.CrossEntropyLoss()
     best_recall = 0.0
     for epoch in range(1, num_epochs + 2):
         if epoch == 1:
-            train_loss = train(model, optimizer_init,feature_dim,batch_size,num_sample,len(train_data_set.class_to_idx), threshold,eig_para)
+            train_loss = train(model, optimizer_init, feature_dim, batch_size, num_sample,
+                               len(train_data_set.class_to_idx), threshold, eig_para)
         else:
-            train_loss = train(model, optimizer,feature_dim,batch_size,num_sample,len(train_data_set.class_to_idx), threshold, eig_para)
+            train_loss = train(model, optimizer, feature_dim, batch_size, num_sample, len(train_data_set.class_to_idx),
+                               threshold, eig_para)
         results['train_loss'].append(train_loss)
         results['train_accuracy'].append(0)
         rank = test(model, recalls)
