@@ -203,7 +203,7 @@ if __name__ == '__main__':
     model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
     if (device.type == 'cuda') and (len(gpu_id_list) > 1):
         print("multi GPU activate")
-        model = nn.DataParallel(model, device_ids=gpu_id_list)
+        model = nn.DataParallel(model, device_ids=device)
     model.to(device)
     flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device), True, None))
     flops, params = clever_format([flops, params])
