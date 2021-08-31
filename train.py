@@ -206,7 +206,7 @@ if __name__ == '__main__':
 
     if (device.type == 'cuda') and torch.cuda.device_count() > 1:
         print("multi GPU activate")
-        model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
+        model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx)).cuda()
         model = nn.DataParallel(model).to(device)
     elif (device.type == 'cuda') and torch.cuda.device_count() == 1:
         print("single GPU activate")
