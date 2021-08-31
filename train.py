@@ -171,7 +171,7 @@ if __name__ == '__main__':
 
     gpu_id_list = gpu_id.split(',')
     gpu_id_list = list(map(int, gpu_id_list))
-    device = torch.device("cuda:"+gpu_id_list[0] if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:"+str(gpu_id_list[0]) if torch.cuda.is_available() else "cpu")
     results = {'train_loss': [], 'train_accuracy': []}
     for recall_id in recalls:
         results['test_dense_recall@{}'.format(recall_id)] = []
