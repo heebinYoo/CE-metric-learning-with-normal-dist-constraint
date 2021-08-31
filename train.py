@@ -59,7 +59,7 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
             num_sample = torch.sum(label_to_indices == i)
             # if i == 0:
             #    new_samples_target[:] = torch.full((num_sample, 1), labels_set[0] + num_class, dtype=int)
-            chosen_features_indices = label_to_indices == i
+            chosen_features_indices = (label_to_indices == i)
             chosen_features = features[0:batch_size][chosen_features_indices]
             emp_center = chosen_features.mean(0)
             if num_sample > 1:
@@ -80,9 +80,9 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
             # sigma=0.2
             normed_chosen_features = torch.norm(chosen_features, dim=1)
             length_std = torch.std(normed_chosen_features)
-            inds = torch.where(normed_chosen_features < torch.norm(emp_center) + threshold * length_std)[0]
+            inds = torch.where(normed_chosen_features < normed_chosen_features.mean() + threshold * length_std)[0]
             if inds.size()[0] != 0:
-                low_confidence_sample[chosen_features_indices[inds]] = 1
+                low_confidence_sample[torch.where(chosen_features_indices)[0][inds]] = 1
 
             new_sample_distribution = normal.Normal(new_sample_centroid, torch.norm(emp_center) / 8)
             new_samples_emb = new_sample_distribution.sample([num_sample])
