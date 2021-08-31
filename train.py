@@ -25,30 +25,14 @@ torch.backends.cudnn.benchmark = False
 def LargestEig(x, center=True, scale=True):
     with torch.no_grad():
         n, p = x.size()
-        ones = torch.ones(n).view([n, 1]).to(device)
-        h = ((1 / n) * torch.mm(ones, ones.t())) if center else torch.zeros(n * n).view([n, n])
-        H = torch.eye(n).to(device)  - h
-        X_center = torch.mm(H.double(), x.double())
+        ones = torch.ones(n, dtype=np.double).view([n, 1]).to(device)
+        h = ((1 / n) * torch.mm(ones, ones.t())) if center else torch.zeros(n * n, dtype=np.double).view([n, n]).to(device)
+        H = torch.eye(n, dtype=np.double).to(device) - h
+        X_center = torch.mm(H, x)
         covariance = 1 / (n - 1) * torch.mm(X_center.t(), X_center).view(p, p)
-        scaling = torch.sqrt(1 / torch.diag(covariance)).double() if scale else torch.ones(p).to(device) .double()
+        scaling = torch.sqrt(1 / torch.diag(covariance)) if scale else torch.ones(p, dtype=np.double).to(device)
         scaled_covariance = torch.mm(torch.diag(scaling).view(p, p), covariance)
         eigenvalues, eigenvectors = torch.linalg.eigh(scaled_covariance, 'U')
-        """
-        total = eigenvalues.sum()
-        if k>=1:
-            index = 511-k
-            components = (eigenvectors[:, index:])
-        else :
-            eigsum = 0
-            index = 0
-            for i in range(512):
-                eigsum = eigsum + eigenvalues[511-i]
-                if eigsum >= total*k:
-                    index = 511-i
-                    break;
-            components = (eigenvectors[:, index:])
-        """
-
     return eigenvectors[:,1] ,scaled_covariance
 
 
@@ -176,7 +160,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs', default=30, type=int, help='train epoch number')
     parser.add_argument('--threshold', default=0.0, type=float, help='threshold for low confidence samples')
     parser.add_argument('--eigvec_para', default=0.2, type=float, help='ratio of former weight : eigenvector')
-    parser.add_argument('--gpu_id', default=0, type=int, help='gpu id')
+    parser.add_argument('--gpu_id', default='0', type=str, help='gpu id')
 
     opt = parser.parse_args()
     # args parse
@@ -185,7 +169,7 @@ if __name__ == '__main__':
     num_sample, threshold, eig_para, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, [int(k) for k in opt.recalls.split(',')]
     save_name_pre = '{}_{}_{}'.format(data_name, crop_type, feature_dim)
 
-    device = torch.device("cuda:"+str(gpu_id) if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:"+gpu_id if torch.cuda.is_available() else "cpu")
     results = {'train_loss': [], 'train_accuracy': []}
     for recall_id in recalls:
         results['test_dense_recall@{}'.format(recall_id)] = []
@@ -203,8 +187,12 @@ if __name__ == '__main__':
         gallery_data_loader = DataLoader(gallery_data_set, batch_size, shuffle=False, num_workers=8)
         eval_dict['gallery'] = {'data_loader': gallery_data_loader}
 
+    gpu_id_list = gpu_id.split(',')
+    gpu_id_list = list(map(int, gpu_id_list))
     # model setup, model profile, optimizer config and loss definition
-    model = ConfidenceControl(feature_dim, 2*len(train_data_set.class_to_idx)).to(device) # modify
+    model = ConfidenceControl(feature_dim, 2*len(train_data_set.class_to_idx))
+    model = nn.DataParallel(model, device_ids=gpu_id_list)
+    model.to(device)
     flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device), True,None))
     flops, params = clever_format([flops, params])
     print('# Model Params: {} FLOPs: {}'.format(params, flops))
