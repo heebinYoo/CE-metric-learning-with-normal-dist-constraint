@@ -34,7 +34,7 @@ def LargestEig(x, center=True, scale=True):
         covariance = 1 / (n - 1) * torch.mm(X_center.t(), X_center).view(p, p)
         scaling = torch.sqrt(1 / torch.diag(covariance)) if scale else torch.ones(p, dtype=torch.float).to(device)
         scaled_covariance = torch.mm(torch.diag(scaling).view(p, p), covariance)
-        eigenvalues, eigenvectors = torch.linalg.cholesky(scaled_covariance, 'U')
+        eigenvalues, eigenvectors = torch.linalg.cholesky(scaled_covariance)
     return eigenvectors[:, 1], scaled_covariance
 
 
