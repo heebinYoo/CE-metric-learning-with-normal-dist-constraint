@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import torch.nn.functional as F
-from model import ConfidenceControl, ConvAngularPen
+from model import ConfidenceControl, ConvAngularPenCC
 from utils import recall, ImageReader, MPerClassSampler
 from torch.distributions import normal
 from losses import ProxyNCA_prob
@@ -74,19 +74,19 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
             chosen_features = features[0:batch_size][chosen_features_indices]
             emp_center = chosen_features.mean(0)
             if num_sample > 1:
-                eig_vecs[i], only_high = LargestEig(chosen_features)
+                eig_vecs[labels_set[i]], only_high = LargestEig(chosen_features)
             else:
-                eig_vecs[i] = chosen_features
+                eig_vecs[labels_set[i]] = chosen_features
             if not only_high :
 
                 # 샘플의 방향으로 아이겐벡터방향 정해줘야함
-                if torch.dot(emp_center, eig_vecs[i]) < 0:
-                    eig_vecs[i] = - eig_vecs[i]
+                if torch.dot(emp_center, eig_vecs[labels_set[i]]) < 0:
+                    eig_vecs[labels_set[i]] = - eig_vecs[labels_set[i]]
                 with torch.no_grad():
                     if multi_gpu :
-                        aug_weight = (1 - eig_para) * net.module.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
+                        aug_weight = (1 - eig_para) * net.module.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[labels_set[i]]
                     else :
-                        aug_weight = (1 - eig_para) * net.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
+                        aug_weight = (1 - eig_para) * net.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[labels_set[i]]
 
                 # TBD
                 new_sample_centroid = emp_center + (aug_weight * torch.norm(emp_center) * 2)
@@ -225,15 +225,18 @@ if __name__ == '__main__':
         print("multi GPU activate")
         multi_gpu=True
         model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
+        #model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
         model = nn.DataParallel(model)
         model.to(f'cuda:{model.device_ids[0]}')
     elif (device.type == 'cuda') and torch.cuda.device_count() == 1:
         print("single GPU activate")
         model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
+        #model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
         model = model.to(device)
     else:
         print("cpu mode")
         model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
+        #model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
 
     #flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device), True, None))
     #flops, params = clever_format([flops, params])

@@ -4,40 +4,23 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torchvision.models import resnet50
-from losses import AngularPenaltySMLoss, ConfidenceControlLoss
+from losses import AngularPenaltyCCLoss, ConfidenceControlLoss
 
 
-class ConvAngularPen(nn.Module):
-    def __init__(self, num_classes=10, loss_type='arcface'):
-        super(ConvAngularPen, self).__init__()
-        self.convlayers = ConvNet()
-        self.adms_loss = AngularPenaltySMLoss(3, num_classes, loss_type=loss_type)
+class ConvAngularPenCC(nn.Module):
+    def __init__(self, in_features, out_features, loss_type='arcface'):
+        super(ConvAngularPenCC, self).__init__()
+        self.convlayers = ConvNet(in_features)
+        self.cc_loss = AngularPenaltyCCLoss(in_features, out_features, loss_type=loss_type)
 
-    def forward(self, x, labels=None, embed=False):
-        x = self.convlayers(x)
+    def forward(self, x,embed=False ,labels=None, sample_type=None ):
+
         if embed:
+            x = self.convlayers(x)
             return x
-        L = self.adms_loss(x, labels)
+        L = self.cc_loss(x, labels, sample_type)
         return L
 
-
-class ProxyLinear(nn.Module):
-    def __init__(self, in_features, out_features):
-        super(ProxyLinear, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.weight = nn.Parameter(torch.Tensor(out_features, in_features))
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-
-    def forward(self, x):
-        #output = x.matmul(F.normalize(self.weight, dim=-1).t())
-        output = x.matmul(self.weight.t())
-        weight_size=int(self.weight.data.shape[0] /2)
-        output_high = output[:weight_size]
-        return output, output_high
-
-    def extra_repr(self):
-        return 'in_features={}, out_features={}'.format(self.in_features, self.out_features)
 
 
 class ConfidenceControl(nn.Module):
@@ -86,3 +69,20 @@ class ConvNet(nn.Module):
         return feature
         #return feature, classes, classes_high
 
+class ProxyLinear(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ProxyLinear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(torch.Tensor(out_features, in_features))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+
+    def forward(self, x):
+        #output = x.matmul(F.normalize(self.weight, dim=-1).t())
+        output = x.matmul(self.weight.t())
+        weight_size=int(self.weight.data.shape[0] /2)
+        output_high = output[:weight_size]
+        return output, output_high
+
+    def extra_repr(self):
+        return 'in_features={}, out_features={}'.format(self.in_features, self.out_features)
