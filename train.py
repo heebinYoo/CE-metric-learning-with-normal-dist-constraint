@@ -24,6 +24,7 @@ torch.backends.cudnn.benchmark = False
 
 
 def LargestEig(x, center=True, scale=True):
+    only_high=False
     with torch.no_grad():
         n, p = x.size()
         ones = torch.ones(n, dtype=torch.float).view([n, 1]).to(device)
@@ -34,14 +35,23 @@ def LargestEig(x, center=True, scale=True):
         covariance = 1 / (n - 1) * torch.mm(X_center.t(), X_center).view(p, p)
         scaling = torch.sqrt(1 / torch.diag(covariance)) if scale else torch.ones(p, dtype=torch.float).to(device)
         scaled_covariance = torch.mm(torch.diag(scaling).view(p, p), covariance)
-        eigenvalues, eigenvectors = torch.linalg.cholesky(scaled_covariance)
-    return eigenvectors[:, 1], scaled_covariance
+        try:
+            eigenvalues, eigenvectors = torch.linalg.eigh(scaled_covariance, 'U')
+        except:
+            only_high=True
+            return None,only_high
+        else :
+            return eigenvectors[:, 1], only_high
+    #return eigenvectors[:, 1], ones
 
 
 def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold, eig_para, multi_gpu):
     net.train()
     total_loss, total_correct, total_num, data_bar = 0.0, 0.0, 0, tqdm(train_data_loader, dynamic_ncols=True)
     for inputs, labels in data_bar:
+        loss_aug= 0
+        loss_low = 0
+        loss_high = 0
         inputs, labels = inputs.to(device), labels.to(device)
         features = net(inputs, embed=True)
 
@@ -63,41 +73,43 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
             chosen_features = features[0:batch_size][chosen_features_indices]
             emp_center = chosen_features.mean(0)
             if num_sample > 1:
-                eig_vecs[i], scaled_covariance = LargestEig(chosen_features)
+                eig_vecs[i], only_high = LargestEig(chosen_features)
             else:
                 eig_vecs[i] = chosen_features
+            if not only_high :
 
-            # 샘플의 방향으로 아이겐벡터방향 정해줘야함
-            if torch.dot(emp_center, eig_vecs[i]) < 0:
-                eig_vecs[i] = - eig_vecs[i]
-            with torch.no_grad():
-                if multi_gpu :
-                    aug_weight = (1 - eig_para) * net.module.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
-                else :
-                    aug_weight = (1 - eig_para) * net.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
+                # 샘플의 방향으로 아이겐벡터방향 정해줘야함
+                if torch.dot(emp_center, eig_vecs[i]) < 0:
+                    eig_vecs[i] = - eig_vecs[i]
+                with torch.no_grad():
+                    if multi_gpu :
+                        aug_weight = (1 - eig_para) * net.module.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
+                    else :
+                        aug_weight = (1 - eig_para) * net.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
 
-            # TBD
-            new_sample_centroid = emp_center + (aug_weight * torch.norm(emp_center) * 2)
+                # TBD
+                new_sample_centroid = emp_center + (aug_weight * torch.norm(emp_center) * 2)
 
-            # 샘플의 크기가 emprical mean을 mean으로 갖는 1d gaussian이라고 가정해서 기준이되는 sigma 값에 따라 low confidence sample을 뽑음
-            # sigma=0.2
-            normed_chosen_features = torch.norm(chosen_features, dim=1)
-            length_std = torch.std(normed_chosen_features)
-            inds = torch.where(normed_chosen_features < normed_chosen_features.mean() + threshold * length_std)[0]
-            if inds.size()[0] != 0:
-                low_confidence_sample[torch.where(chosen_features_indices)[0][inds]] = 1
+                # 샘플의 크기가 emprical mean을 mean으로 갖는 1d gaussian이라고 가정해서 기준이되는 sigma 값에 따라 low confidence sample을 뽑음
+                # sigma=0.2
+                normed_chosen_features = torch.norm(chosen_features, dim=1)
+                length_std = torch.std(normed_chosen_features)
+                inds = torch.where(normed_chosen_features < normed_chosen_features.mean() + threshold * length_std)[0]
+                if inds.size()[0] != 0:
+                    low_confidence_sample[torch.where(chosen_features_indices)[0][inds]] = 1
 
-            new_sample_distribution = normal.Normal(new_sample_centroid, torch.norm(emp_center) / 8)
-            new_samples_emb = new_sample_distribution.sample([num_sample])
-            features = torch.cat((features, new_samples_emb.float()), 0)
+                new_sample_distribution = normal.Normal(new_sample_centroid, torch.norm(emp_center) / 8)
+                new_samples_emb = new_sample_distribution.sample([num_sample])
+                features = torch.cat((features, new_samples_emb.float()), 0)
 
-            new_samples_target[accumulated_num_sample:accumulated_num_sample + num_sample] = labels_set[i] + num_class
-            accumulated_num_sample += num_sample
+                new_samples_target[accumulated_num_sample:accumulated_num_sample + num_sample] = labels_set[i] + num_class
+                accumulated_num_sample += num_sample
 
-        loss_aug = net(features[batch_size:], labels=new_samples_target, sample_type='aug')
+
+        if features.size()[0]>batch_size :
+            loss_aug = net(features[batch_size:], labels=new_samples_target, sample_type='aug')
         # loss_aug = loss_criterion(aug_classes,new_samples_target.to(device) )
-        loss_high = 0
-        loss_low = 0
+
         high_confidence_ind = torch.where(low_confidence_sample == 0)[0]
         low_confidence_ind = torch.where(low_confidence_sample == 1)[0]
         if high_confidence_ind.size()[0] != 0:
