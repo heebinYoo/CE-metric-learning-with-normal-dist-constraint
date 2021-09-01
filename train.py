@@ -36,12 +36,13 @@ def LargestEig(x, center=True, scale=True):
         scaling = torch.sqrt(1 / torch.diag(covariance)) if scale else torch.ones(p, dtype=torch.float).to(device)
         scaled_covariance = torch.mm(torch.diag(scaling).view(p, p), covariance)
         try:
-            eigenvalues, eigenvectors = torch.linalg.eigh(scaled_covariance, 'U')
+            eigenvalues, eigenvectors = torch.lobpcg(scaled_covariance, k=1, method="ortho")
         except:
+            print("can't find stable eigenvector")
             only_high=True
             return None,only_high
         else :
-            return eigenvectors[:, 1], only_high
+            return eigenvectors, only_high
     #return eigenvectors[:, 1], ones
 
 
