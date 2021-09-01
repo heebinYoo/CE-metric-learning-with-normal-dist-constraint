@@ -34,7 +34,7 @@ def LargestEig(x, center=True, scale=True):
         covariance = 1 / (n - 1) * torch.mm(X_center.t(), X_center).view(p, p)
         scaling = torch.sqrt(1 / torch.diag(covariance)) if scale else torch.ones(p, dtype=torch.float).to(device)
         scaled_covariance = torch.mm(torch.diag(scaling).view(p, p), covariance)
-        eigenvalues, eigenvectors = torch.linalg.eigh(scaled_covariance, 'U')
+        eigenvalues, eigenvectors = torch.linalg.cholesky(scaled_covariance, 'U')
     return eigenvectors[:, 1], scaled_covariance
 
 
@@ -71,7 +71,6 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
             if torch.dot(emp_center, eig_vecs[i]) < 0:
                 eig_vecs[i] = - eig_vecs[i]
             with torch.no_grad():
-                ##TODO parallel
                 if multi_gpu :
                     aug_weight = (1 - eig_para) * net.module.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[i]
                 else :
@@ -160,19 +159,19 @@ def test(net, recall_ids):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train Model')
     parser.add_argument('--data_path', default='../data', type=str, help='datasets path')
-    parser.add_argument('--data_name', default='sop', type=str,
+    parser.add_argument('--data_name', default='CUB_200_2011', type=str,
                         choices=['cars196', 'CUB_200_2011', 'sop', 'isc'],
                         help='dataset name')
-    parser.add_argument('--crop_type', default='uncropped', type=str, choices=['uncropped', 'cropped'],
+    parser.add_argument('--crop_type', default='cropped', type=str, choices=['uncropped', 'cropped'],
                         help='crop data or not, it only works for car or cub dataset')
     parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
     parser.add_argument('--feature_dim', default=2048, type=int, help='feature dim')
     parser.add_argument('--temperature', default=0.05, type=float, help='temperature used in softmax')
-    parser.add_argument('--recalls', default='1,10,100,1000', type=str, help='selected recall')
-    parser.add_argument('--batch_size', default=256, type=int, help='train batch size')
-    parser.add_argument('--num_sample', default=4, type=int, help='samples within each class')
+    parser.add_argument('--recalls', default='1,2,4,8', type=str, help='selected recall')
+    parser.add_argument('--batch_size', default=75, type=int, help='train batch size')
+    parser.add_argument('--num_sample', default=25, type=int, help='samples within each class')
     parser.add_argument('--num_epochs', default=30, type=int, help='train epoch number')
-    parser.add_argument('--threshold', default=-0.2, type=float, help='threshold for low confidence samples')
+    parser.add_argument('--threshold', default=0.0, type=float, help='threshold for low confidence samples')
     parser.add_argument('--eigvec_para', default=0.1, type=float, help='ratio of former weight : eigenvector')
 
     opt = parser.parse_args()

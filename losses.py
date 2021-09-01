@@ -31,6 +31,7 @@ class ConfidenceControlLoss(nn.Module):
 
         assert sample_type in  ['high', 'low', 'aug', None]
         if sample_type == 'high':
+
             weight_from = int(0)
             weight_to = int(self.weight.data.shape[0] /2)
         if sample_type == 'low':
