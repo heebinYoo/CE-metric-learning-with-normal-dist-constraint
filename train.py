@@ -40,7 +40,7 @@ def LargestEig(x, center=True, scale=True):
         except:
             print("can't find stable eigenvector")
             only_high=True
-            return None,only_high
+            return x[0],only_high
         else :
             return eigenvectors, only_high
     #return eigenvectors[:, 1], ones
