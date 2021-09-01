@@ -192,7 +192,7 @@ if __name__ == '__main__':
     # args parse
     data_path, data_name, crop_type, lr = opt.data_path, opt.data_name, opt.crop_type, opt.lr
     feature_dim, temperature, batch_size, num_epochs = opt.feature_dim, opt.temperature, opt.batch_size, opt.num_epochs
-    num_sample, threshold, eig_para, model_angular_penalty, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, opt.model_angular_penalty [int(k) for k in
+    num_sample, threshold, eig_para, model_angular_penalty, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, opt.model_angular_penalty, [int(k) for k in
                                                                                                 opt.recalls.split(',')]
     save_name_pre = '{}_{}_{}'.format(data_name, crop_type, feature_dim)
 
