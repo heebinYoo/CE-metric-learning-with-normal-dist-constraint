@@ -69,7 +69,7 @@ class AngularPenaltyCCLoss(nn.Module):
         assert loss_type in  ['arcface', 'sphereface', 'cosface']
         if loss_type == 'arcface':
             self.s = 1.0 if not s else s
-            self.m = 0.5 if not m else m
+            self.m = 1.0 if not m else m
         if loss_type == 'sphereface':
             self.s = 64.0 if not s else s
             self.m = 1.35 if not m else m
@@ -93,42 +93,44 @@ class AngularPenaltyCCLoss(nn.Module):
         assert torch.min(labels) >= 0
         assert torch.max(labels) < self.out_features
         assert sample_type in  ['high', 'low', 'aug', None]
+        """
+        for W in self.weight.parameters():
+            W = F.normalize(W, p=2, dim=1)
+
+        norm_x = F.normalize(x, p=2, dim=1)
+        """
 
         output = x.matmul(self.weight.t())
 
         if sample_type == 'high':
             weight_from = int(0)
             weight_to = int(self.weight.data.shape[0] /2)
-            output= output[:,weight_from:weight_to]
 
-            if self.loss_type == 'cosface':
-                numerator = self.s * (torch.diagonal(output.transpose(0, 1)[labels]) - self.m)
-            if self.loss_type == 'arcface':
-                numerator = self.s * torch.cos(torch.acos(torch.clamp(torch.diagonal(output.transpose(0, 1)[labels]), -1.+self.eps, 1-self.eps)) + self.m)
-            if self.loss_type == 'sphereface':
-                numerator = self.s * torch.cos(self.m * torch.acos(torch.clamp(torch.diagonal(output.transpose(0, 1)[labels]), -1.+self.eps, 1-self.eps)))
-
-            excl = torch.cat([torch.cat((output[i, :y], output[i, y+1:])).unsqueeze(0) for i, y in enumerate(labels)], dim=0)
-            denominator = torch.exp(numerator) + torch.sum(torch.exp(self.s * excl), dim=1)
-            L = numerator - torch.log(denominator)
-            return 0.1 *(-torch.mean(L))
 
         if sample_type == 'low' or sample_type == 'aug':
             weight_from = int(0)
             weight_to = int(self.weight.data.shape[0])
-            output= output[:,weight_from:weight_to]
-            if self.loss_type == 'cosface':
-                numerator = self.s * (torch.diagonal(output.transpose(0, 1)[labels]) - self.m)
-            if self.loss_type == 'arcface':
-                numerator = self.s * torch.cos(torch.acos(torch.clamp(torch.diagonal(output.transpose(0, 1)[labels]), -1.+self.eps, 1-self.eps)) + self.m)
-            if self.loss_type == 'sphereface':
-                numerator = self.s * torch.cos(self.m * torch.acos(torch.clamp(torch.diagonal(output.transpose(0, 1)[labels]), -1.+self.eps, 1-self.eps)))
+            #
+            #output= output[:,weight_from:weight_to]
 
-            excl = torch.cat([torch.cat((output[i, :y], output[i, y+1:])).unsqueeze(0) for i, y in enumerate(labels)], dim=0)
-            denominator = torch.exp(numerator) + torch.sum(torch.exp(self.s * excl), dim=1)
-            L = numerator - torch.log(denominator)
-            cc_loss = self.loss(output,labels)
-            return cc_loss + 0.1 *(-torch.mean(L))
+
+        output= output[:,weight_from:weight_to]
+        cc_loss = self.loss(output,labels)
+
+        norm_x = F.normalize(x, p=2, dim=1)
+        norm_output=norm_x.matmul(F.normalize(self.weight, p=2, dim=1).t())
+
+        if self.loss_type == 'cosface':
+            numerator = self.s * (torch.diagonal(norm_output.transpose(0, 1)[labels]) - self.m)
+        if self.loss_type == 'arcface':
+            numerator = self.s * torch.cos(torch.acos(torch.clamp(torch.diagonal(norm_output.transpose(0, 1)[labels]), -1.+self.eps, 1-self.eps)) + self.m)
+        if self.loss_type == 'sphereface':
+            numerator = self.s * torch.cos(self.m * torch.acos(torch.clamp(torch.diagonal(norm_output.transpose(0, 1)[labels]), -1.+self.eps, 1-self.eps)))
+
+        excl = torch.cat([torch.cat((norm_output[i, :y], norm_output[i, y+1:])).unsqueeze(0) for i, y in enumerate(labels)], dim=0)
+        denominator = torch.exp(numerator) + torch.sum(torch.exp(self.s * excl), dim=1)
+        L = numerator - torch.log(denominator)
+        return cc_loss + 0.1 *(-torch.mean(L))
 
 
 def pairwise_distance(a, squared=False):

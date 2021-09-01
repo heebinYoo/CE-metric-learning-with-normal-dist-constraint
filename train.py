@@ -186,12 +186,13 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs', default=30, type=int, help='train epoch number')
     parser.add_argument('--threshold', default=0.0, type=float, help='threshold for low confidence samples')
     parser.add_argument('--eigvec_para', default=0.1, type=float, help='ratio of former weight : eigenvector')
+    parser.add_argument('--model_angular_penalty', default=False, type=bool, help='add angular penalty')
 
     opt = parser.parse_args()
     # args parse
     data_path, data_name, crop_type, lr = opt.data_path, opt.data_name, opt.crop_type, opt.lr
     feature_dim, temperature, batch_size, num_epochs = opt.feature_dim, opt.temperature, opt.batch_size, opt.num_epochs
-    num_sample, threshold, eig_para, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, [int(k) for k in
+    num_sample, threshold, eig_para, model_angular_penalty, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, opt.model_angular_penalty [int(k) for k in
                                                                                                 opt.recalls.split(',')]
     save_name_pre = '{}_{}_{}'.format(data_name, crop_type, feature_dim)
 
@@ -224,19 +225,26 @@ if __name__ == '__main__':
     if (device.type == 'cuda') and torch.cuda.device_count() > 1:
         print("multi GPU activate")
         multi_gpu=True
-        model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
-        #model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+        if model_angular_penalty :
+        #
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+        else:
+            model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = nn.DataParallel(model)
         model.to(f'cuda:{model.device_ids[0]}')
     elif (device.type == 'cuda') and torch.cuda.device_count() == 1:
         print("single GPU activate")
-        model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
-        #model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+        if model_angular_penalty:
+           model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+        else:
+            model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = model.to(device)
     else:
         print("cpu mode")
-        model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
-        #model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+        if model_angular_penalty:
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+        else:
+            model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
 
     #flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device), True, None))
     #flops, params = clever_format([flops, params])
