@@ -76,7 +76,7 @@ class AngularPenaltyCCLoss(nn.Module):
             self.m = 2.0 if not m else m
         if loss_type == 'cosface':
             self.s = 30.0 if not s else s
-            self.m = 0.4 if not m else m
+            self.m = 2.0 if not m else m
 
         self.loss = nn.CrossEntropyLoss()
         self.loss_type = loss_type
@@ -116,7 +116,7 @@ class AngularPenaltyCCLoss(nn.Module):
 
 
         output= output[:,weight_from:weight_to]
-        #cc_loss = self.loss(output,labels)
+        cc_loss = self.loss(output,labels)
 
         norm_x = F.normalize(x, p=2, dim=1)
         norm_output=norm_x.matmul(F.normalize(self.weight, p=2, dim=1).t())
@@ -131,9 +131,9 @@ class AngularPenaltyCCLoss(nn.Module):
         excl = torch.cat([torch.cat((norm_output[i, :y], norm_output[i, y+1:])).unsqueeze(0) for i, y in enumerate(labels)], dim=0)
         denominator = torch.exp(numerator) + torch.sum(torch.exp(self.s * excl), dim=1)
         L = numerator - torch.log(denominator)
-        #return cc_loss + 0.1 *(-torch.mean(L))
+        return cc_loss + 0.1 *(-torch.mean(L))
 
-        return 0.1 *(-torch.mean(L))
+        #return 0.1 *(-torch.mean(L))
 
 
 def pairwise_distance(a, squared=False):
