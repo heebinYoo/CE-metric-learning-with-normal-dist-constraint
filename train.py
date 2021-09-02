@@ -123,6 +123,10 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
         loss = loss.mean()
 
         # loss = loss_criterion(classes / temperature, labels)
+        if not torch.isfinite(loss):
+            print('WARNING: non-finite loss, ending training ')
+
+            break
         optim.zero_grad()
         loss.backward()
         optim.step()
@@ -227,7 +231,7 @@ if __name__ == '__main__':
         multi_gpu=True
         if model_angular_penalty :
         #
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'cosface')
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'sphereface')
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = nn.DataParallel(model)
@@ -236,14 +240,14 @@ if __name__ == '__main__':
         print("single GPU activate")
         if model_angular_penalty:
             print("angular penalty")
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'cosface')
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'sphereface')
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = model.to(device)
     else:
         print("cpu mode")
         if model_angular_penalty:
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'cosface')
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'sphereface')
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
 
@@ -252,13 +256,13 @@ if __name__ == '__main__':
     #print('# Model Params: {} FLOPs: {}'.format(params, flops))
     if (device.type == 'cuda') and torch.cuda.device_count() > 1:
         optimizer_init = SGD([{'params': model.module.convlayers.refactor.parameters()}, {'params': model.module.cc_loss.weight}],
-                         lr=lr, momentum=0.9, weight_decay=1e-5)
+                         lr=lr, momentum=0.9, weight_decay=1e-4)
     else:
         optimizer_init = SGD([{'params': model.convlayers.refactor.parameters()}, {'params': model.cc_loss.weight}],
-                             lr=lr, momentum=0.9, weight_decay=1e-5)
+                             lr=lr, momentum=0.9, weight_decay=1e-4)
 
-    optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-5)
-    lr_scheduler = StepLR(optimizer, step_size=num_epochs // 2, gamma=0.01)
+    optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
+    lr_scheduler = StepLR(optimizer, step_size=3, gamma=0.01)
     # loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
     loss_criterion = nn.CrossEntropyLoss()
     best_recall = 0.0

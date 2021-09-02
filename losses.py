@@ -47,6 +47,7 @@ class ConfidenceControlLoss(nn.Module):
         output= output[:,weight_from:weight_to]
         cc_loss = self.loss(output,labels)
 
+
         return cc_loss
 
     def extra_repr(self):
