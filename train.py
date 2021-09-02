@@ -183,7 +183,7 @@ if __name__ == '__main__':
     parser.add_argument('--recalls', default='1,2,4,8', type=str, help='selected recall')
     parser.add_argument('--batch_size', default=75, type=int, help='train batch size')
     parser.add_argument('--num_sample', default=25, type=int, help='samples within each class')
-    parser.add_argument('--num_epochs', default=30, type=int, help='train epoch number')
+    parser.add_argument('--num_epochs', default=40, type=int, help='train epoch number')
     parser.add_argument('--threshold', default=0.0, type=float, help='threshold for low confidence samples')
     parser.add_argument('--eigvec_para', default=0.1, type=float, help='ratio of former weight : eigenvector')
     parser.add_argument('--model_angular_penalty', default=False, type=bool, help='add angular penalty')
@@ -227,7 +227,7 @@ if __name__ == '__main__':
         multi_gpu=True
         if model_angular_penalty :
         #
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'cosface')
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = nn.DataParallel(model)
@@ -235,14 +235,15 @@ if __name__ == '__main__':
     elif (device.type == 'cuda') and torch.cuda.device_count() == 1:
         print("single GPU activate")
         if model_angular_penalty:
-           model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+            print("angular penalty")
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'cosface')
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = model.to(device)
     else:
         print("cpu mode")
         if model_angular_penalty:
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'cosface')
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
 
@@ -251,13 +252,13 @@ if __name__ == '__main__':
     #print('# Model Params: {} FLOPs: {}'.format(params, flops))
     if (device.type == 'cuda') and torch.cuda.device_count() > 1:
         optimizer_init = SGD([{'params': model.module.convlayers.refactor.parameters()}, {'params': model.module.cc_loss.weight}],
-                         lr=lr, momentum=0.9, weight_decay=1e-4)
+                         lr=lr, momentum=0.9, weight_decay=1e-5)
     else:
         optimizer_init = SGD([{'params': model.convlayers.refactor.parameters()}, {'params': model.cc_loss.weight}],
-                             lr=lr, momentum=0.9, weight_decay=1e-4)
+                             lr=lr, momentum=0.9, weight_decay=1e-5)
 
-    optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
-    lr_scheduler = StepLR(optimizer, step_size=num_epochs // 2, gamma=0.1)
+    optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-5)
+    lr_scheduler = StepLR(optimizer, step_size=num_epochs // 2, gamma=0.01)
     # loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
     loss_criterion = nn.CrossEntropyLoss()
     best_recall = 0.0
