@@ -262,7 +262,7 @@ if __name__ == '__main__':
                              lr=lr, momentum=0.9, weight_decay=1e-4)
 
     optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
-    lr_scheduler = StepLR(optimizer, step_size= 3, gamma=0.5)
+    lr_scheduler = StepLR(optimizer, step_size= 3, gamma=0.3)
     # loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
     loss_criterion = nn.CrossEntropyLoss()
     best_recall = 0.0
