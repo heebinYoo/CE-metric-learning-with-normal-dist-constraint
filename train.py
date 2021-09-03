@@ -6,7 +6,7 @@ import torch
 from thop import profile, clever_format
 from torch import nn
 from torch.optim import SGD
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -269,7 +269,8 @@ if __name__ == '__main__':
                              lr=lr, momentum=0.9, weight_decay=1e-4)
 
     optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
-    lr_scheduler = StepLR(optimizer, step_size= 3, gamma=lr_gamma)
+    lr_scheduler = ReduceLROnPlateau(optimizer, mode=str('min'), patience= 4)
+    #lr_scheduler = StepLR(optimizer, step_size= 15, gamma=lr_gamma)
     # loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
     loss_criterion = nn.CrossEntropyLoss()
     best_recall = 0.0
@@ -284,7 +285,7 @@ if __name__ == '__main__':
         results['train_accuracy'].append(0)
         rank = test(model, recalls)
         if epoch >= 2:
-            lr_scheduler.step()
+            lr_scheduler.step(train_loss)
 
         # save statistics
         data_frame = pd.DataFrame(data=results, index=range(1, epoch + 1))
