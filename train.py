@@ -182,12 +182,12 @@ def test(net, recall_ids):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train Model')
     parser.add_argument('--data_path', default='../data', type=str, help='datasets path')
-    parser.add_argument('--data_name', default='CUB_200_2011', type=str,
+    parser.add_argument('--data_name', default='cars196', type=str,
                         choices=['cars196', 'CUB_200_2011', 'sop', 'isc'],
                         help='dataset name')
     parser.add_argument('--crop_type', default='cropped', type=str, choices=['uncropped', 'cropped'],
                         help='crop data or not, it only works for car or cub dataset')
-    parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+    parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
     parser.add_argument('--feature_dim', default=2048, type=int, help='feature dim')
     parser.add_argument('--temperature', default=0.05, type=float, help='temperature used in softmax')
     parser.add_argument('--recalls', default='1,2,4,8', type=str, help='selected recall')
@@ -196,13 +196,14 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs', default=40, type=int, help='train epoch number')
     parser.add_argument('--threshold', default=0.0, type=float, help='threshold for low confidence samples')
     parser.add_argument('--eigvec_para', default=0.1, type=float, help='ratio of former weight : eigenvector')
-    parser.add_argument('--model_angular_penalty', default=False, type=bool, help='add angular penalty')
+    parser.add_argument('--model_angular_penalty', default=True, type=bool, help='add angular penalty')
+    parser.add_argument('--lr_gamma', default=0.5, type=float, help='learning rate scheduler gamma')
 
     opt = parser.parse_args()
     # args parse
     data_path, data_name, crop_type, lr = opt.data_path, opt.data_name, opt.crop_type, opt.lr
     feature_dim, temperature, batch_size, num_epochs = opt.feature_dim, opt.temperature, opt.batch_size, opt.num_epochs
-    num_sample, threshold, eig_para, model_angular_penalty, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, opt.model_angular_penalty, [int(k) for k in
+    num_sample, threshold, eig_para, model_angular_penalty,lr_gamma, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, opt.model_angular_penalty,opt.lr_gamma, [int(k) for k in
                                                                                                 opt.recalls.split(',')]
     save_name_pre = '{}_{}_{}'.format(data_name, crop_type, feature_dim)
 
@@ -237,7 +238,7 @@ if __name__ == '__main__':
         multi_gpu=True
         if model_angular_penalty :
         #
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'cosface')
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = nn.DataParallel(model)
@@ -246,14 +247,14 @@ if __name__ == '__main__':
         print("single GPU activate")
         if model_angular_penalty:
             print("angular penalty")
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'cosface')
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = model.to(device)
     else:
         print("cpu mode")
         if model_angular_penalty:
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'cosface')
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
 
@@ -268,7 +269,7 @@ if __name__ == '__main__':
                              lr=lr, momentum=0.9, weight_decay=1e-4)
 
     optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
-    lr_scheduler = StepLR(optimizer, step_size= 3, gamma=0.5)
+    lr_scheduler = StepLR(optimizer, step_size= 3, lr_gamma=lr_gamma)
     # loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
     loss_criterion = nn.CrossEntropyLoss()
     best_recall = 0.0
