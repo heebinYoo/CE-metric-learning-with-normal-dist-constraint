@@ -187,7 +187,7 @@ if __name__ == '__main__':
                         help='dataset name')
     parser.add_argument('--crop_type', default='cropped', type=str, choices=['uncropped', 'cropped'],
                         help='crop data or not, it only works for car or cub dataset')
-    parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
+    parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
     parser.add_argument('--feature_dim', default=2048, type=int, help='feature dim')
     parser.add_argument('--temperature', default=0.05, type=float, help='temperature used in softmax')
     parser.add_argument('--recalls', default='1,2,4,8', type=str, help='selected recall')
@@ -196,8 +196,8 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs', default=40, type=int, help='train epoch number')
     parser.add_argument('--threshold', default=0.0, type=float, help='threshold for low confidence samples')
     parser.add_argument('--eigvec_para', default=0.1, type=float, help='ratio of former weight : eigenvector')
-    parser.add_argument('--model_angular_penalty', default=True, type=bool, help='add angular penalty')
-    parser.add_argument('--lr_gamma', default=0.5, type=float, help='learning rate scheduler gamma')
+    parser.add_argument('--model_angular_penalty', default=False, type=bool, help='add angular penalty')
+    parser.add_argument('--lr_gamma', default=0.1, type=float, help='learning rate scheduler gamma')
 
     opt = parser.parse_args()
     # args parse
