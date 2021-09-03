@@ -99,6 +99,11 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
                 if inds.size()[0] != 0:
                     low_confidence_sample[torch.where(chosen_features_indices)[0][inds]] = 1
 
+                ok = normal.Normal.arg_constraints["loc"].check(new_sample_centroid)
+                bad_elements = new_sample_centroid[~ok]
+                print(bad_elements)
+                break
+
                 new_sample_distribution = normal.Normal(new_sample_centroid, torch.norm(emp_center) / 8)
                 new_samples_emb = new_sample_distribution.sample([num_sample])
                 features = torch.cat((features, new_samples_emb.float()), 0)
@@ -125,7 +130,6 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
         # loss = loss_criterion(classes / temperature, labels)
         if not torch.isfinite(loss):
             print('WARNING: non-finite loss, ending training ')
-
             break
         optim.zero_grad()
         loss.backward()
@@ -262,7 +266,7 @@ if __name__ == '__main__':
                              lr=lr, momentum=0.9, weight_decay=1e-4)
 
     optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
-    lr_scheduler = StepLR(optimizer, step_size= 3, gamma=0.2)
+    lr_scheduler = StepLR(optimizer, step_size= 3, gamma=0.5)
     # loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
     loss_criterion = nn.CrossEntropyLoss()
     best_recall = 0.0
