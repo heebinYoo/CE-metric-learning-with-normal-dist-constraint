@@ -98,11 +98,13 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
                 inds = torch.where(normed_chosen_features < normed_chosen_features.mean() + threshold * length_std)[0]
                 if inds.size()[0] != 0:
                     low_confidence_sample[torch.where(chosen_features_indices)[0][inds]] = 1
-
+                """
                 ok = normal.Normal.arg_constraints["loc"].check(new_sample_centroid)
                 bad_elements = new_sample_centroid[~ok]
                 print(bad_elements)
                 break
+                """
+
 
                 new_sample_distribution = normal.Normal(new_sample_centroid, torch.norm(emp_center) / 8)
                 new_samples_emb = new_sample_distribution.sample([num_sample])
