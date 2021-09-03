@@ -76,7 +76,7 @@ class AngularPenaltyCCLoss(nn.Module):
             self.m = 2.0 if not m else m
         if loss_type == 'cosface':
             self.s = 32.0 if not s else s
-            self.m = 3.0 if not m else m
+            self.m = 2.0 if not m else m
 
         self.loss = nn.CrossEntropyLoss()
         self.loss_type = loss_type
