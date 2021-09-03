@@ -70,7 +70,7 @@ class AngularPenaltyCCLoss(nn.Module):
         assert loss_type in  ['arcface', 'sphereface', 'cosface']
         if loss_type == 'arcface':
             self.s = 64.0 if not s else s
-            self.m = 2.0 if not m else m
+            self.m = 1.0 if not m else m
         if loss_type == 'sphereface':
             self.s = 64.0 if not s else s
             self.m = 2.0 if not m else m
