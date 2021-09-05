@@ -182,22 +182,22 @@ def test(net, recall_ids):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train Model')
     parser.add_argument('--data_path', default='../data', type=str, help='datasets path')
-    parser.add_argument('--data_name', default='cars196', type=str,
+    parser.add_argument('--data_name', default='Stanford_Online_Products', type=str,
                         choices=['cars196', 'CUB_200_2011', 'sop', 'isc'],
                         help='dataset name')
-    parser.add_argument('--crop_type', default='cropped', type=str, choices=['uncropped', 'cropped'],
+    parser.add_argument('--crop_type', default='uncropped', type=str, choices=['uncropped', 'cropped'],
                         help='crop data or not, it only works for car or cub dataset')
     parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
     parser.add_argument('--feature_dim', default=2048, type=int, help='feature dim')
     parser.add_argument('--temperature', default=0.05, type=float, help='temperature used in softmax')
-    parser.add_argument('--recalls', default='1,2,4,8', type=str, help='selected recall')
-    parser.add_argument('--batch_size', default=75, type=int, help='train batch size')
-    parser.add_argument('--num_sample', default=25, type=int, help='samples within each class')
+    parser.add_argument('--recalls', default='1,10,100,1000', type=str, help='selected recall')
+    parser.add_argument('--batch_size', default=50, type=int, help='train batch size')
+    parser.add_argument('--num_sample', default=5, type=int, help='samples within each class')
     parser.add_argument('--num_epochs', default=40, type=int, help='train epoch number')
     parser.add_argument('--threshold', default=0.0, type=float, help='threshold for low confidence samples')
     parser.add_argument('--eigvec_para', default=0.1, type=float, help='ratio of former weight : eigenvector')
-    parser.add_argument('--model_angular_penalty', default=False, type=bool, help='add angular penalty')
-    parser.add_argument('--lr_gamma', default=0.1, type=float, help='learning rate scheduler gamma')
+    parser.add_argument('--model_angular_penalty', default=False, type=str, choices=['cosface', 'arcface', 'sphereface','None'],help='add angular penalty')
+    parser.add_argument('--lr_gamma', default=0.5, type=float, help='learning rate scheduler gamma')
 
     opt = parser.parse_args()
     # args parse
@@ -236,25 +236,25 @@ if __name__ == '__main__':
     if (device.type == 'cuda') and torch.cuda.device_count() > 1:
         print("multi GPU activate")
         multi_gpu=True
-        if model_angular_penalty :
+        if model_angular_penalty in  ['arcface', 'sphereface', 'cosface']:
         #
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),model_angular_penalty)
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = nn.DataParallel(model)
         model.to(f'cuda:{model.device_ids[0]}')
     elif (device.type == 'cuda') and torch.cuda.device_count() == 1:
         print("single GPU activate")
-        if model_angular_penalty:
+        if model_angular_penalty in  ['arcface', 'sphereface', 'cosface']:
             print("angular penalty")
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),model_angular_penalty)
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = model.to(device)
     else:
         print("cpu mode")
-        if model_angular_penalty:
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),'arcface')
+        if model_angular_penalty in  ['arcface', 'sphereface', 'cosface']:
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),model_angular_penalty)
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
 
@@ -269,7 +269,8 @@ if __name__ == '__main__':
                              lr=lr, momentum=0.9, weight_decay=1e-4)
 
     optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
-    lr_scheduler = StepLR(optimizer, step_size= 2, gamma=lr_gamma)
+    #lr_scheduler = StepLR(optimizer, step_size= 2, gamma=lr_gamma)
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=2, T_mult=1, eta_min=0.0001)
     #lr_scheduler = StepLR(optimizer, step_size= 15, gamma=lr_gamma)
     # loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
     loss_criterion = nn.CrossEntropyLoss()
