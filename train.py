@@ -86,7 +86,7 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
                     if multi_gpu :
                         aug_weight = (1 - eig_para) * net.module.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[labels_set[i]]
                     else :
-                        aug_weight = (1 - eig_para) * net.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[labels_set[i]]
+                        aug_weight =  net.cc_loss.weight.data[labels_set[i]]
 
                 # TBD
                 new_sample_centroid = emp_center + (aug_weight * torch.norm(emp_center) * 2)
@@ -131,7 +131,7 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
 
         # loss = loss_criterion(classes / temperature, labels)
         if not torch.isfinite(loss):
-            print('WARNING: non-finite loss, ending training ')
+            print('WARNING: non-finite loss')
             break
         optim.zero_grad()
         loss.backward()
@@ -269,7 +269,7 @@ if __name__ == '__main__':
                              lr=lr, momentum=0.9, weight_decay=1e-4)
 
     optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
-    lr_scheduler = ReduceLROnPlateau(optimizer, mode=str('min'), patience= 4)
+    lr_scheduler = StepLR(optimizer, step_size= 2, gamma=lr_gamma)
     #lr_scheduler = StepLR(optimizer, step_size= 15, gamma=lr_gamma)
     # loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
     loss_criterion = nn.CrossEntropyLoss()
