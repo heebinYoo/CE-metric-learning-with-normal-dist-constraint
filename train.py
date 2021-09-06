@@ -187,7 +187,7 @@ if __name__ == '__main__':
                         help='dataset name')
     parser.add_argument('--crop_type', default='uncropped', type=str, choices=['uncropped', 'cropped'],
                         help='crop data or not, it only works for car or cub dataset')
-    parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+    parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
     parser.add_argument('--feature_dim', default=2048, type=int, help='feature dim')
     parser.add_argument('--temperature', default=0.05, type=float, help='temperature used in softmax')
     parser.add_argument('--recalls', default='1,10,100,1000', type=str, help='selected recall')
@@ -197,7 +197,7 @@ if __name__ == '__main__':
     parser.add_argument('--threshold', default=0.0, type=float, help='threshold for low confidence samples')
     parser.add_argument('--eigvec_para', default=0.1, type=float, help='ratio of former weight : eigenvector')
     parser.add_argument('--model_angular_penalty', default=False, type=str, choices=['cosface', 'arcface', 'sphereface','None'],help='add angular penalty')
-    parser.add_argument('--lr_gamma', default=0.5, type=float, help='learning rate scheduler gamma')
+    parser.add_argument('--lr_gamma', default=0.1, type=float, help='learning rate scheduler gamma')
 
     opt = parser.parse_args()
     # args parse
@@ -270,8 +270,8 @@ if __name__ == '__main__':
 
     optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
     #lr_scheduler = StepLR(optimizer, step_size= 2, gamma=lr_gamma)
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=2, T_mult=1, eta_min=0.0001)
-    #lr_scheduler = StepLR(optimizer, step_size= 15, gamma=lr_gamma)
+    #lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=2, T_mult=1, eta_min=0.0001)
+    lr_scheduler = StepLR(optimizer, step_size= 15, gamma=lr_gamma)
     # loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
     loss_criterion = nn.CrossEntropyLoss()
     best_recall = 0.0
