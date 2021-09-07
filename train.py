@@ -182,22 +182,22 @@ def test(net, recall_ids):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train Model')
     parser.add_argument('--data_path', default='../data', type=str, help='datasets path')
-    parser.add_argument('--data_name', default='CUB_200_2011', type=str,
+    parser.add_argument('--data_name', default='cars196', type=str,
                         choices=['cars196', 'CUB_200_2011', 'sop', 'isc'],
                         help='dataset name')
     parser.add_argument('--crop_type', default='uncropped', type=str, choices=['uncropped', 'cropped'],
                         help='crop data or not, it only works for car or cub dataset')
-    parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+    parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
     parser.add_argument('--feature_dim', default=2048, type=int, help='feature dim')
     parser.add_argument('--temperature', default=0.05, type=float, help='temperature used in softmax')
     parser.add_argument('--recalls', default='1,2,4,8', type=str, help='selected recall')
     parser.add_argument('--batch_size', default=75, type=int, help='train batch size')
     parser.add_argument('--num_sample', default=25, type=int, help='samples within each class')
     parser.add_argument('--num_epochs', default=40, type=int, help='train epoch number')
-    parser.add_argument('--threshold', default=0.0, type=float, help='threshold for low confidence samples')
+    parser.add_argument('--threshold', default=-1.0, type=float, help='threshold for low confidence samples')
     parser.add_argument('--eigvec_para', default=0.1, type=float, help='ratio of former weight : eigenvector')
-    parser.add_argument('--model_angular_penalty', default='arcface', type=str, choices=['cosface', 'arcface', 'sphereface','None'],help='add angular penalty')
-    parser.add_argument('--lr_gamma', default=0.3, type=float, help='learning rate scheduler gamma')
+    parser.add_argument('--model_angular_penalty', default='None', type=str, choices=['cosface', 'arcface', 'sphereface','None'],help='add angular penalty')
+    parser.add_argument('--lr_gamma', default=0.1, type=float, help='learning rate scheduler gamma')
 
     opt = parser.parse_args()
     # args parse
