@@ -1,3 +1,8 @@
+import os
+
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 import argparse
 
 import numpy as np
@@ -24,7 +29,7 @@ torch.backends.cudnn.benchmark = False
 
 
 def LargestEig(x, center=True, scale=True):
-    only_high=False
+    only_high = False
     with torch.no_grad():
         n, p = x.size()
         ones = torch.ones(n, dtype=torch.float).view([n, 1]).to(device)
@@ -39,24 +44,25 @@ def LargestEig(x, center=True, scale=True):
             eigenvalues, eigenvectors = torch.lobpcg(scaled_covariance, k=1, method="ortho", niter=50)
         except:
             print("can't find stable eigenvector")
-            only_high=True
-            return x[0],only_high
-        else :
+            only_high = True
+            return x[0], only_high
+        else:
             return torch.flatten(eigenvectors), only_high
-    #return eigenvectors[:, 1], ones
+    # return eigenvectors[:, 1], ones
 
 
 def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold, eig_para, multi_gpu):
-    net.train()
+    net.train() # 지금은 트레이닝 하는 중임을 선언
     total_loss, total_correct, total_num, data_bar = 0.0, 0.0, 0, tqdm(train_data_loader, dynamic_ncols=True)
     for inputs, labels in data_bar:
-        loss_aug= 0
+        loss_aug = 0
         loss_low = 0
         loss_high = 0
         inputs, labels = inputs.to(device), labels.to(device)
         features = net(inputs, embed=True)
 
-        # get first eigenvector
+        # 존재하는 레이블, 존재하는 레이블 리스트에서의 인덱스
+        # 1,2,3 & 0,2,1,2 <- 1,3,2,3
         labels_set, label_to_indices = torch.unique(labels, return_inverse=True)
         # label_to_indices = {label: np.where(labels.cpu().numpy() == label)[0] for label in labels_set}
 
@@ -77,16 +83,17 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
                 eig_vecs[labels_set[i]], only_high = LargestEig(chosen_features)
             else:
                 eig_vecs[labels_set[i]] = chosen_features
-            if not only_high :
+            if not only_high:
 
                 # 샘플의 방향으로 아이겐벡터방향 정해줘야함
                 if torch.dot(emp_center, eig_vecs[labels_set[i]]) < 0:
                     eig_vecs[labels_set[i]] = - eig_vecs[labels_set[i]]
                 with torch.no_grad():
-                    if multi_gpu :
-                        aug_weight = (1 - eig_para) * net.module.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[labels_set[i]]
-                    else :
-                        aug_weight =  net.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[labels_set[i]]
+                    if multi_gpu:
+                        aug_weight = (1 - eig_para) * net.module.cc_loss.weight.data[labels_set[i]] + eig_para * \
+                                     eig_vecs[labels_set[i]]
+                    else:
+                        aug_weight = net.cc_loss.weight.data[labels_set[i]] + eig_para * eig_vecs[labels_set[i]]
 
                 # TBD
                 new_sample_centroid = emp_center + (aug_weight * torch.norm(emp_center) * 2)
@@ -105,16 +112,15 @@ def train(net, optim, feature_dim, batch_size, num_sample, num_class, threshold,
                 break
                 """
 
-
                 new_sample_distribution = normal.Normal(new_sample_centroid, torch.norm(emp_center) / 8)
                 new_samples_emb = new_sample_distribution.sample([num_sample])
                 features = torch.cat((features, new_samples_emb.float()), 0)
 
-                new_samples_target[accumulated_num_sample:accumulated_num_sample + num_sample] = labels_set[i] + num_class
+                new_samples_target[accumulated_num_sample:accumulated_num_sample + num_sample] = labels_set[
+                                                                                                     i] + num_class
                 accumulated_num_sample += num_sample
 
-
-        if features.size()[0]>batch_size :
+        if features.size()[0] > batch_size:
             loss_aug = net(features[batch_size:], labels=new_samples_target, sample_type='aug')
         # loss_aug = loss_criterion(aug_classes,new_samples_target.to(device) )
 
@@ -196,15 +202,17 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs', default=40, type=int, help='train epoch number')
     parser.add_argument('--threshold', default=-1.0, type=float, help='threshold for low confidence samples')
     parser.add_argument('--eigvec_para', default=0.1, type=float, help='ratio of former weight : eigenvector')
-    parser.add_argument('--model_angular_penalty', default='None', type=str, choices=['cosface', 'arcface', 'sphereface','None'],help='add angular penalty')
+    parser.add_argument('--model_angular_penalty', default='None', type=str,
+                        choices=['cosface', 'arcface', 'sphereface', 'None'], help='add angular penalty')
     parser.add_argument('--lr_gamma', default=0.1, type=float, help='learning rate scheduler gamma')
 
     opt = parser.parse_args()
     # args parse
     data_path, data_name, crop_type, lr = opt.data_path, opt.data_name, opt.crop_type, opt.lr
     feature_dim, temperature, batch_size, num_epochs = opt.feature_dim, opt.temperature, opt.batch_size, opt.num_epochs
-    num_sample, threshold, eig_para, model_angular_penalty,lr_gamma, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, opt.model_angular_penalty,opt.lr_gamma, [int(k) for k in
-                                                                                                opt.recalls.split(',')]
+    num_sample, threshold, eig_para, model_angular_penalty, lr_gamma, recalls = opt.num_sample, opt.threshold, opt.eigvec_para, opt.model_angular_penalty, opt.lr_gamma, [
+        int(k) for k in
+        opt.recalls.split(',')]
     save_name_pre = '{}_{}_{}'.format(data_name, crop_type, feature_dim)
 
     results = {'train_loss': [], 'train_accuracy': []}
@@ -231,57 +239,73 @@ if __name__ == '__main__':
     print('Current cuda device:', torch.cuda.current_device())
     print('Count of using GPUs:', torch.cuda.device_count())
 
+
     # model setup, model profile, optimizer config and loss definition
+
+    ############################ model ############################
+
+
     multi_gpu = False
     if (device.type == 'cuda') and torch.cuda.device_count() > 1:
         print("multi GPU activate")
-        multi_gpu=True
-        if model_angular_penalty in  ['arcface', 'sphereface', 'cosface']:
-        #
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),model_angular_penalty)
+        multi_gpu = True
+        if model_angular_penalty in ['arcface', 'sphereface', 'cosface']:
+            #
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx), model_angular_penalty)
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = nn.DataParallel(model)
         model.to(f'cuda:{model.device_ids[0]}')
     elif (device.type == 'cuda') and torch.cuda.device_count() == 1:
         print("single GPU activate")
-        if model_angular_penalty in  ['arcface', 'sphereface', 'cosface']:
+        if model_angular_penalty in ['arcface', 'sphereface', 'cosface']:
             print("angular penalty")
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),model_angular_penalty)
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx), model_angular_penalty)
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
         model = model.to(device)
     else:
         print("cpu mode")
-        if model_angular_penalty in  ['arcface', 'sphereface', 'cosface']:
-            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx),model_angular_penalty)
+        if model_angular_penalty in ['arcface', 'sphereface', 'cosface']:
+            model = ConvAngularPenCC(feature_dim, 2 * len(train_data_set.class_to_idx), model_angular_penalty)
         else:
             model = ConfidenceControl(feature_dim, 2 * len(train_data_set.class_to_idx))
 
-    #flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).to(device), True, None))
-    #flops, params = clever_format([flops, params])
-    #print('# Model Params: {} FLOPs: {}'.format(params, flops))
+    ############################ optimizer ############################
+
     if (device.type == 'cuda') and torch.cuda.device_count() > 1:
-        optimizer_init = SGD([{'params': model.module.convlayers.refactor.parameters()}, {'params': model.module.cc_loss.weight}],
-                         lr=lr, momentum=0.9, weight_decay=1e-4)
+        optimizer_init = SGD(
+            [{'params': model.module.convlayers.refactor.parameters()}, {'params': model.module.cc_loss.weight}],
+            lr=lr, momentum=0.9, weight_decay=1e-4)
     else:
-        optimizer_init = SGD([{'params': model.convlayers.refactor.parameters()}, {'params': model.cc_loss.weight}],
-                             lr=lr, momentum=0.9, weight_decay=1e-4)
+        optimizer_init = SGD(
+            [{'params': model.convlayers.refactor.parameters()}, {'params': model.cc_loss.weight}],
+            lr=lr, momentum=0.9, weight_decay=1e-4)
 
     optimizer = SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
-    #lr_scheduler = StepLR(optimizer, step_size= 2, gamma=lr_gamma)
-    #lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=2, T_mult=1, eta_min=0.0001)
-    lr_scheduler = StepLR(optimizer, step_size= 15, gamma=lr_gamma)
+
+    ############################ learning rate ############################
+
+    # lr_scheduler = StepLR(optimizer, step_size= 2, gamma=lr_gamma)
+    # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=2, T_mult=1, eta_min=0.0001)
+    lr_scheduler = StepLR(optimizer, step_size=15, gamma=lr_gamma)
+
+    ############################ loss ############################
+
     # loss_criterion = ProxyNCA_prob(len(train_data_set.class_to_idx),feature_dim,scale=1).cuda()
     loss_criterion = nn.CrossEntropyLoss()
+
+    ############################ training ############################
+
     best_recall = 0.0
     for epoch in range(1, num_epochs + 2):
+        #에포크 단위로 train 함수를 부르고 train 함수에서는 모든 데이터셋을 iter하며 훈련하는 구조
         if epoch == 1:
             train_loss = train(model, optimizer_init, feature_dim, batch_size, num_sample,
-                               len(train_data_set.class_to_idx), threshold, eig_para,multi_gpu )
+                               len(train_data_set.class_to_idx), threshold, eig_para, multi_gpu)
         else:
-            train_loss = train(model, optimizer, feature_dim, batch_size, num_sample, len(train_data_set.class_to_idx),
-                               threshold, eig_para,multi_gpu)
+            train_loss = train(model, optimizer, feature_dim, batch_size, num_sample,
+                               len(train_data_set.class_to_idx), threshold, eig_para, multi_gpu)
         results['train_loss'].append(train_loss)
         results['train_accuracy'].append(0)
         rank = test(model, recalls)

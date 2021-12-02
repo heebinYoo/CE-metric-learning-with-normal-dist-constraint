@@ -29,9 +29,9 @@ class ConfidenceControl(nn.Module):
         self.convlayers = ConvNet(in_features)
         self.cc_loss = ConfidenceControlLoss(in_features, out_features)
 
-    def forward(self, x, embed=False, labels=None, sample_type=None ):
+    def forward(self, x, embed=False, labels=None, sample_type=None):
 
-
+        # 처음에 임베드 true로 통과시킨 애만 임베드 false하고 통과시킬 수 있다.
         if embed:
             x = self.convlayers(x)
             return x

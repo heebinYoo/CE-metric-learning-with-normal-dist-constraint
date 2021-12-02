@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -26,32 +25,33 @@ class ConfidenceControlLoss(nn.Module):
         self.weight = nn.Parameter(torch.Tensor(out_features, in_features))
         nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
 
+    def forward(self, x, labels, sample_type):
 
-    def forward(self, x, labels,sample_type):
-
-        assert sample_type in  ['high', 'low', 'aug', None]
+        assert sample_type in ['high', 'low', 'aug', None]
         if sample_type == 'high':
-
             weight_from = int(0)
-            weight_to = int(self.weight.data.shape[0] /2)
+            weight_to = int(self.weight.data.shape[0] / 2)
         if sample_type == 'low':
             weight_from = int(0)
             weight_to = int(self.weight.data.shape[0])
         if sample_type == 'aug':
             weight_from = int(0)
             weight_to = int(self.weight.data.shape[0])
+        if sample_type is None:
+            weight_from = int(0)
+            weight_to = int(self.weight.data.shape[0])
 
-        #x = self.convlayers(x)
-        #output = x.matmul(F.normalize(self.weight, dim=-1).t())
+        # x = self.convlayers(x)
+        # output = x.matmul(F.normalize(self.weight, dim=-1).t())
         output = x.matmul(self.weight.t())
-        output= output[:,weight_from:weight_to]
-        cc_loss = self.loss(output,labels)
-
+        output = output[:, weight_from:weight_to]
+        cc_loss = self.loss(output, labels)
 
         return cc_loss
 
     def extra_repr(self):
         return 'in_features={}, out_features={}'.format(self.in_features, self.out_features)
+
 
 class AngularPenaltyCCLoss(nn.Module):
 
@@ -67,7 +67,7 @@ class AngularPenaltyCCLoss(nn.Module):
         '''
         super(AngularPenaltyCCLoss, self).__init__()
         loss_type = loss_type.lower()
-        assert loss_type in  ['arcface', 'sphereface', 'cosface']
+        assert loss_type in ['arcface', 'sphereface', 'cosface']
         if loss_type == 'arcface':
             self.s = 64.0 if not s else s
             self.m = 2.0 if not m else m
@@ -93,7 +93,7 @@ class AngularPenaltyCCLoss(nn.Module):
         assert len(x) == len(labels)
         assert torch.min(labels) >= 0
         assert torch.max(labels) < self.out_features
-        assert sample_type in  ['high', 'low', 'aug', None]
+        assert sample_type in ['high', 'low', 'aug', None]
         """
         for W in self.weight.parameters():
             W = F.normalize(W, p=2, dim=1)
@@ -105,32 +105,35 @@ class AngularPenaltyCCLoss(nn.Module):
 
         if sample_type == 'high':
             weight_from = int(0)
-            weight_to = int(self.weight.data.shape[0] /2)
-
+            weight_to = int(self.weight.data.shape[0] / 2)
 
         if sample_type == 'low' or sample_type == 'aug':
             weight_from = int(0)
             weight_to = int(self.weight.data.shape[0])
 
-        output= output[:,weight_from:weight_to]
-        cc_loss = self.loss(output,labels)
+        output = output[:, weight_from:weight_to]
+        cc_loss = self.loss(output, labels)
 
         norm_x = F.normalize(x, p=2, dim=1)
-        norm_output=norm_x.matmul(F.normalize(self.weight, p=2, dim=1).t())
+        norm_output = norm_x.matmul(F.normalize(self.weight, p=2, dim=1).t())
 
         if self.loss_type == 'cosface':
             numerator = self.s * (torch.diagonal(norm_output.transpose(0, 1)[labels]) - self.m)
         if self.loss_type == 'arcface':
-            numerator = self.s * torch.cos(torch.acos(torch.clamp(torch.diagonal(norm_output.transpose(0, 1)[labels]), -1.+self.eps, 1-self.eps)) + self.m)
+            numerator = self.s * torch.cos(torch.acos(
+                torch.clamp(torch.diagonal(norm_output.transpose(0, 1)[labels]), -1. + self.eps,
+                            1 - self.eps)) + self.m)
         if self.loss_type == 'sphereface':
-            numerator = self.s * torch.cos(self.m * torch.acos(torch.clamp(torch.diagonal(norm_output.transpose(0, 1)[labels]), -1.+self.eps, 1-self.eps)))
+            numerator = self.s * torch.cos(self.m * torch.acos(
+                torch.clamp(torch.diagonal(norm_output.transpose(0, 1)[labels]), -1. + self.eps, 1 - self.eps)))
 
-        excl = torch.cat([torch.cat((norm_output[i, :y], norm_output[i, y+1:])).unsqueeze(0) for i, y in enumerate(labels)], dim=0)
+        excl = torch.cat(
+            [torch.cat((norm_output[i, :y], norm_output[i, y + 1:])).unsqueeze(0) for i, y in enumerate(labels)], dim=0)
         denominator = torch.exp(numerator) + torch.sum(torch.exp(self.s * excl), dim=1)
         L = numerator - torch.log(denominator)
-        return cc_loss + 0.1 *(-torch.mean(L))
+        return cc_loss + 0.1 * (-torch.mean(L))
 
-        #return 0.1 *(-torch.mean(L))
+        # return 0.1 *(-torch.mean(L))
 
 
 def pairwise_distance(a, squared=False):
@@ -149,7 +152,7 @@ def pairwise_distance(a, squared=False):
 
     # Get the mask where the zero distances are at.
     error_mask = torch.le(pairwise_distances_squared, 0.0)
-    #print(error_mask.sum())
+    # print(error_mask.sum())
     # Optionally take the sqrt.
     if squared:
         pairwise_distances = pairwise_distances_squared
@@ -159,7 +162,7 @@ def pairwise_distance(a, squared=False):
         )
 
     # Undo conditionally adding 1e-16.
-    #pairwise_distances = torch.mul(pairwise_distances,(error_mask == False).float())
+    # pairwise_distances = torch.mul(pairwise_distances,(error_mask == False).float())
 
     # Explicitly set diagonals to zero.
     mask_offdiagonals = 1 - torch.eye(
@@ -171,12 +174,11 @@ def pairwise_distance(a, squared=False):
     return pairwise_distances
 
 
-
-def binarize_and_smooth_labels(T, nb_classes, smoothing_const = 0):
+def binarize_and_smooth_labels(T, nb_classes, smoothing_const=0):
     import sklearn.preprocessing
     T = T.cpu().numpy()
     T = sklearn.preprocessing.label_binarize(
-        T, classes = range(0, nb_classes)
+        T, classes=range(0, nb_classes)
     )
     T = T * (1 - smoothing_const)
     T[T == 0] = smoothing_const / (nb_classes - 1)
@@ -190,12 +192,12 @@ class ProxyNCA_prob(torch.nn.Module):
         torch.nn.Module.__init__(self)
         self.nb_classes = nb_classes
         print(nb_classes)
-        self.proxies = torch.nn.Parameter(torch.randn(2*nb_classes, sz_embed) / 8)
+        self.proxies = torch.nn.Parameter(torch.randn(2 * nb_classes, sz_embed) / 8)
         self.scale = scale
 
     def forward(self, X, T, low):
         P = self.proxies
-        #note: self.scale is equal to sqrt(1/T)
+        # note: self.scale is equal to sqrt(1/T)
         # in the paper T = 1/9, therefore, scale = sart(1/(1/9)) = sqrt(9) = 3
         #  we need to apply sqrt because the pairwise distance is calculated as norm^2
         """
@@ -203,17 +205,15 @@ class ProxyNCA_prob(torch.nn.Module):
         X = self.scale * F.normalize(X, p = 2, dim = -1)
         """
 
-
-
-        if low ==True:
+        if low == True:
             D = pairwise_distance(
                 torch.cat(
                     [X, P]
                 ),
-                squared = True
+                squared=True
             )[:X.size()[0], X.size()[0]:]
             T = binarize_and_smooth_labels(
-                T = T, nb_classes = 2 * self.nb_classes, smoothing_const = 0
+                T=T, nb_classes=2 * self.nb_classes, smoothing_const=0
             )
 
         else:
@@ -221,14 +221,11 @@ class ProxyNCA_prob(torch.nn.Module):
                 torch.cat(
                     [X, P[:self.nb_classes]]
                 ),
-                squared = True
+                squared=True
             )[:X.size()[0], X.size()[0]:]
             T = binarize_and_smooth_labels(
-                T = T, nb_classes = self.nb_classes, smoothing_const = 0
+                T=T, nb_classes=self.nb_classes, smoothing_const=0
             )
-
-
-
 
         loss = torch.sum(- T * F.log_softmax(-D, -1), -1)
         loss = loss.mean()
